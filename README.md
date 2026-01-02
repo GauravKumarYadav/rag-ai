@@ -65,14 +65,40 @@ ollama pull nomic-embed-text
 ollama serve  # Runs at http://localhost:11434
 ```
 
-### 4. Configure Environment
+### 4. Set Up ChromaDB (Vector Database)
+
+ChromaDB runs in **embedded mode** by default - no extra setup needed!
+
+**For production deployments (server mode):**
+
+```bash
+# Run ChromaDB as a Docker service
+docker run -d \
+  --name chromadb \
+  -p 8001:8000 \
+  -v $(pwd)/data/chroma:/chroma/chroma \
+  -e ANONYMIZED_TELEMETRY=FALSE \
+  chromadb/chroma:latest
+
+# Verify it's running
+curl http://localhost:8001/api/v2/heartbeat
+```
+
+Then update `.env`:
+```bash
+VECTOR_STORE_URL=http://localhost:8001
+```
+
+📖 See [docs/CHROMADB.md](docs/CHROMADB.md) for detailed setup including systemd/launchd services, Docker Compose, authentication, and troubleshooting.
+
+### 5. Configure Environment
 
 ```bash
 cp .env.example .env
 # Edit .env if needed (defaults work for LMStudio)
 ```
 
-### 5. Start the Application
+### 6. Start the Application
 
 **Terminal 1 - Backend:**
 ```bash
@@ -88,7 +114,7 @@ make frontend
 # Opens at http://localhost:3000
 ```
 
-### 6. Upload Documents (Optional)
+### 7. Upload Documents (Optional)
 
 **Via UI:**
 - Drag & drop files into the upload area
@@ -223,6 +249,11 @@ curl -X POST http://localhost:8000/models/switch \
 - Make sure you have `nomic-embed-text-v1.5` loaded in LMStudio
 - Or switch to Ollama: `ollama pull nomic-embed-text`
 
+### ChromaDB Issues
+- See [docs/CHROMADB.md](docs/CHROMADB.md) for detailed setup and troubleshooting
+- Check data directory permissions: `chmod -R 755 ./data/chroma`
+- For server mode, verify: `curl http://localhost:8001/api/v2/heartbeat`
+
 ### OCR Not Working
 - Docling requires additional dependencies for some formats
 - Try `pip install docling[all]` for full support
@@ -230,6 +261,12 @@ curl -X POST http://localhost:8000/models/switch \
 ### Tables Not Rendering
 - Refresh the frontend page to load latest JavaScript
 - Ensure streaming is enabled in settings
+
+## 📚 Documentation
+
+- [Setup Guide](docs/SETUP.md) - Quick start instructions
+- [ChromaDB Guide](docs/CHROMADB.md) - Vector database setup and configuration
+- [API Documentation](http://localhost:8000/docs) - Interactive API docs (when running)
 
 ## 📄 License
 
