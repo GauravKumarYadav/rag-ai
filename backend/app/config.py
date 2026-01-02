@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     # RAG settings
     chroma_db_path: str = "./data/chroma"
     embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
+    
+    # Vector Store Configuration (modular - can switch providers)
+    # Options: "chromadb", "pinecone", "weaviate", "qdrant", "milvus"
+    vector_store_provider: str = "chromadb"
+    vector_store_url: Optional[str] = None  # For cloud/remote stores
+    vector_store_api_key: Optional[str] = None
+    vector_store_namespace: Optional[str] = None  # Index/namespace name
+    vector_store_prefix: str = ""  # Collection name prefix
 
     # Session settings
     session_max_tokens: int = 4000
