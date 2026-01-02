@@ -49,11 +49,52 @@ def chunk_text(text: str, max_chars: int = 1200, overlap: int = 200) -> List[str
     return [c for c in chunks if c]
 
 
-def extract_text_with_docling(file_path: str) -> str:
-    """Extract text from document using Docling (supports PDF, DOCX, images with OCR)."""
+def extract_text_with_docling(file_path: str, fast_mode: bool = False) -> str:
+    """
+    Extract text from document using Docling (supports PDF, DOCX, images with OCR).
+    
+    Args:
+        file_path: Path to the document
+        fast_mode: If True, optimize for speed over accuracy
+    """
     try:
-        from docling.document_converter import DocumentConverter
-        converter = DocumentConverter()
+        from docling.document_converter import DocumentConverter, PdfFormatOption
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.datamodel.accelerator_options import AcceleratorOptions
+        from docling.datamodel.base_models import InputFormat
+        
+        # Optimize accelerator settings
+        accelerator = AcceleratorOptions(
+            num_threads=8,  # Increase parallelism
+            device="auto",  # Will use MPS on Mac, CUDA on NVIDIA, CPU otherwise
+        )
+        
+        # Configure pipeline for speed
+        pipeline_options = PdfPipelineOptions(
+            accelerator_options=accelerator,
+            do_ocr=True,
+            do_table_structure=not fast_mode,  # Skip table detection in fast mode
+            do_picture_classification=False,   # Skip picture classification
+            do_picture_description=False,      # Skip picture description
+            do_code_enrichment=False,          # Skip code detection
+            do_formula_enrichment=False,       # Skip formula detection
+            generate_page_images=False,        # Don't generate images
+            generate_picture_images=False,
+            # Use larger batch sizes for speed
+            ocr_batch_size=8 if not fast_mode else 16,
+            layout_batch_size=8 if not fast_mode else 16,
+            table_batch_size=8 if not fast_mode else 16,
+            # Try to use existing PDF text first (much faster for text-based PDFs)
+            force_backend_text=True,
+        )
+        
+        # Configure converter with optimized options
+        converter = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
+            }
+        )
+        
         result = converter.convert(file_path)
         return result.document.export_to_markdown()
     except Exception as e:
@@ -82,6 +123,7 @@ async def upload_documents(
     chunk_size: int = Form(1200),
     chunk_overlap: int = Form(200),
     use_ocr: bool = Form(True),
+    fast_mode: bool = Form(False),
     client_id: Optional[str] = Form(None),
     client_name: Optional[str] = Form(None),
 ):
@@ -89,7 +131,11 @@ async def upload_documents(
     Upload documents and add them to the vector store.
     
     Supports: PDF (with OCR for scanned docs), DOCX, TXT, MD, images.
-    Set use_ocr=False to use faster pypdf extraction for text-based PDFs.
+    
+    Options:
+    - use_ocr=True: Use Docling with OCR (slower but handles scanned docs)
+    - use_ocr=False: Use pypdf for text-based PDFs only (fastest)
+    - fast_mode=True: Use Docling but skip table detection (good balance)
     
     If client_id is provided, documents are stored in a client-specific collection.
     If client_name is provided without client_id, a new client is created.
@@ -136,7 +182,7 @@ async def upload_documents(
                     tmp.write(content)
                     tmp_path = tmp.name
                 
-                text = extract_text_with_docling(tmp_path)
+                text = extract_text_with_docling(tmp_path, fast_mode=fast_mode)
                 os.unlink(tmp_path)
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=str(e))
