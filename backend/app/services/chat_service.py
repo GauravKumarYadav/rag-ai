@@ -42,12 +42,12 @@ class ChatService:
         
         for client in clients:
             client_store = get_client_vector_store(client.id)
-            doc_count = client_store.docs.count()
+            chunk_count = client_store.docs.count()
             memory_count = client_store.memories.count()
             
             # Get unique document sources for this client
             doc_sources = []
-            if doc_count > 0:
+            if chunk_count > 0:
                 try:
                     # Get all documents to extract unique sources
                     all_docs = client_store.docs.get(include=["metadatas"])
@@ -59,8 +59,11 @@ class ChatService:
                 except Exception:
                     pass
             
+            # Report actual document count (unique files), not chunk count
+            doc_count = len(doc_sources) if doc_sources else 0
+            
             context_parts.append(f"\nClient: {client.name} (ID: {client.id})")
-            context_parts.append(f"  - Documents: {doc_count}")
+            context_parts.append(f"  - Documents: {doc_count} files ({chunk_count} chunks)")
             if doc_sources:
                 context_parts.append(f"  - Document files: {', '.join(doc_sources)}")
             context_parts.append(f"  - Memories: {memory_count}")
