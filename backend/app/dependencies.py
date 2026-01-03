@@ -121,8 +121,8 @@ def require_superuser(
 
 def get_chat_service():
     """Get the ChatService singleton instance."""
-    from app.services.chat_service import ChatService
-    return ChatService()
+    from app.services.chat_service import get_chat_service as _get_chat_service
+    return _get_chat_service()
 
 
 def get_llm_client():
