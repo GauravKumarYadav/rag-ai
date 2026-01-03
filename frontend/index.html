@@ -1633,11 +1633,11 @@
 
             websocket.onopen = () => {
                 reconnectAttempts = 0;
-                updateConnectionStatus(true);
+                // WebSocket connected - don't need to update status as API already confirmed working
             };
 
             websocket.onclose = () => {
-                updateConnectionStatus(false);
+                // Only try reconnect if we're streaming, don't change visible status
                 if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                     reconnectAttempts++;
                     setTimeout(connectWebSocket, 2000 * reconnectAttempts);
@@ -1645,7 +1645,8 @@
             };
 
             websocket.onerror = () => {
-                updateConnectionStatus(false);
+                // WebSocket error - API might still work, don't change status
+                console.warn('WebSocket error - will retry');
             };
 
             websocket.onmessage = (event) => {
@@ -1658,11 +1659,11 @@
             if (connected) {
                 statusDot.classList.add('connected');
                 statusDot.classList.remove('disconnected');
-                statusText.textContent = 'Connected';
+                statusText.textContent = 'Ready';
             } else {
                 statusDot.classList.remove('connected');
                 statusDot.classList.add('disconnected');
-                statusText.textContent = 'Disconnected';
+                statusText.textContent = 'Offline';
             }
         }
 
@@ -2261,20 +2262,23 @@
         // Initialize
         // ============================================================
         async function initializeApp() {
-            updateConnectionStatus(false);
-            await loadConversations();
-            await loadClients();
-            
-            // Check backend status
+            // Check backend status first
             try {
                 const response = await fetch(`${API_BASE}/status`);
                 if (response.ok) {
                     const data = await response.json();
                     document.getElementById('modelBadge').textContent = data.model || 'AI Model';
+                    updateConnectionStatus(true); // API is reachable
+                } else {
+                    updateConnectionStatus(false);
                 }
             } catch (error) {
                 console.error('Failed to get status:', error);
+                updateConnectionStatus(false);
             }
+            
+            await loadConversations();
+            await loadClients();
         }
 
         // Start app
