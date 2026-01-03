@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -66,6 +67,19 @@ class Settings(BaseSettings):
         "http://localhost:8080",
         "http://127.0.0.1:8080",
     ]
+
+    # JWT Authentication settings
+    jwt_secret_key: SecretStr = SecretStr("change-me-in-production-use-strong-secret")
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 30
+
+    # MySQL Audit Logging settings
+    mysql_host: str = "localhost"
+    mysql_port: int = 3306
+    mysql_database: str = "audit_logs"
+    mysql_user: str = "root"
+    mysql_password: SecretStr = SecretStr("Sarita1!@2024_4")
+    mysql_pool_size: int = 5
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 

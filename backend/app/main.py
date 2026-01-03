@@ -1,11 +1,16 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.api.routes import chat, clients, conversations, documents, health, models, status, websocket
+from app.api.routes import auth, chat, clients, conversations, documents, health, models, status, websocket
 from app.memory.pruner import start_pruning_scheduler, stop_pruning_scheduler
+from app.db.mysql import get_db_pool, close_db_pool, init_audit_tables
+from app.middleware.audit import AuditMiddleware
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -13,14 +18,32 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle - startup and shutdown events."""
     # Startup
     start_pruning_scheduler()
+    
+    # Initialize MySQL connection pool and create tables
+    try:
+        await get_db_pool()
+        await init_audit_tables()
+        logger.info("MySQL audit logging initialized")
+    except Exception as e:
+        logger.warning(f"MySQL initialization failed (audit logging disabled): {e}")
+    
     yield
+    
     # Shutdown
     stop_pruning_scheduler()
+    
+    # Close MySQL connection pool
+    try:
+        await close_db_pool()
+        logger.info("MySQL connection pool closed")
+    except Exception as e:
+        logger.warning(f"Error closing MySQL pool: {e}")
 
 
 # OpenAPI tags for better documentation organization
 tags_metadata = [
     {"name": "health", "description": "Health check endpoints"},
+    {"name": "auth", "description": "Authentication endpoints for login and user info"},
     {"name": "chat", "description": "Chat and conversation endpoints with multimodal support"},
     {"name": "websocket", "description": "Real-time WebSocket chat interface"},
     {"name": "documents", "description": "Document upload, search, and management"},
@@ -60,8 +83,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add audit logging middleware (runs after CORS)
+app.add_middleware(AuditMiddleware)
+
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(status.router, tags=["status"])
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
 app.include_router(documents.router, prefix="/documents", tags=["documents"])
 app.include_router(conversations.router, prefix="/conversations", tags=["conversations"])

@@ -2,13 +2,14 @@ import base64
 import io
 import tempfile
 import os
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from app.rag.vector_store import get_vector_store, get_client_vector_store
 from app.models.client import get_client_store
+from app.auth.dependencies import get_current_user
 
 
 router = APIRouter()
@@ -126,6 +127,7 @@ async def upload_documents(
     fast_mode: bool = Form(False),
     client_id: Optional[str] = Form(None),
     client_name: Optional[str] = Form(None),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Upload documents and add them to the vector store.
@@ -228,7 +230,10 @@ async def upload_documents(
 
 
 @router.post("/search", response_model=DocumentSearchResponse, summary="Search documents")
-async def search_documents(request: DocumentSearchRequest):
+async def search_documents(
+    request: DocumentSearchRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
     """Search the vector store for relevant documents.
     
     If client_id is provided, searches in client-specific collection.
@@ -271,8 +276,109 @@ async def get_document_stats():
     }
 
 
+@router.get("", summary="List all documents")
+async def list_documents(
+    client_id: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """List all uploaded documents with metadata."""
+    try:
+        if client_id:
+            store = get_client_vector_store(client_id)
+        else:
+            store = get_vector_store()
+        
+        # Get all documents from the store
+        all_docs = store.docs.get(include=["metadatas"])
+        
+        # Group by source file to get unique documents
+        documents = {}
+        for i, doc_id in enumerate(all_docs.get("ids", [])):
+            metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
+            source = metadata.get("source", "Unknown")
+            
+            if source not in documents:
+                documents[source] = {
+                    "id": doc_id,
+                    "filename": os.path.basename(source) if source != "Unknown" else "Unknown",
+                    "source": source,
+                    "chunk_count": 1,
+                    "client_id": metadata.get("client_id"),
+                    "client_name": metadata.get("client_name"),
+                    "uploaded_at": metadata.get("uploaded_at", ""),
+                }
+            else:
+                documents[source]["chunk_count"] += 1
+        
+        return list(documents.values())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
+
+
+@router.delete("/{document_id:path}", summary="Delete a document")
+async def delete_document(
+    document_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Delete a document and all its chunks from the vector store.
+    
+    The document_id can be either:
+    - The actual chunk ID from the vector store
+    - The filename of the document
+    - The full source path of the document
+    """
+    from urllib.parse import unquote
+    document_id = unquote(document_id)  # Handle URL-encoded filenames
+    
+    store = get_vector_store()
+    try:
+        # Get all chunks
+        all_docs = store.docs.get(include=["metadatas"])
+        
+        ids_to_delete = []
+        source_to_delete = None
+        
+        # First, try to find by exact ID match
+        for i, doc_id in enumerate(all_docs.get("ids", [])):
+            if doc_id == document_id:
+                metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
+                source_to_delete = metadata.get("source", "")
+                break
+        
+        # If not found by ID, try to find by filename or source path
+        if not source_to_delete:
+            for i, doc_id in enumerate(all_docs.get("ids", [])):
+                metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
+                source = metadata.get("source", "")
+                filename = os.path.basename(source) if source else ""
+                
+                # Match by filename or full source path
+                if filename == document_id or source == document_id or source.endswith(document_id):
+                    source_to_delete = source
+                    break
+        
+        # Now delete all chunks with the matching source
+        if source_to_delete:
+            for i, doc_id in enumerate(all_docs.get("ids", [])):
+                metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
+                if metadata.get("source") == source_to_delete:
+                    ids_to_delete.append(doc_id)
+        
+        if ids_to_delete:
+            store.docs.delete(ids=ids_to_delete)
+            return {"message": f"Deleted {len(ids_to_delete)} chunks", "deleted_count": len(ids_to_delete)}
+        else:
+            raise HTTPException(status_code=404, detail=f"Document '{document_id}' not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
+
+
 @router.delete("/clear", summary="Clear all documents")
-async def clear_documents():
+async def clear_documents(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
     """Clear all documents from the vector store (use with caution)."""
     store = get_vector_store()
     try:

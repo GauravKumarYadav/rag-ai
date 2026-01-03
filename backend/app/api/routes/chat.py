@@ -1,6 +1,6 @@
 import base64
 import json
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import (
     APIRouter,
@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.models.schemas import ChatRequest, ChatResponse, ImageInput
 from app.services.chat_service import ChatService, get_chat_service
+from app.auth.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -25,6 +26,7 @@ async def chat(
     request: Request,
     background_tasks: BackgroundTasks,
     service: ChatService = Depends(get_chat_service),
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Chat endpoint supporting both JSON and form-data.

@@ -1,10 +1,11 @@
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
 from app.models.schemas import ChatRequest, ImageInput
 from app.services.chat_service import ChatService, get_chat_service
+from app.auth.jwt import decode_token
 
 router = APIRouter()
 
@@ -43,10 +44,13 @@ def get_connection_manager() -> ConnectionManager:
 async def websocket_chat(
     websocket: WebSocket,
     client_id: str,
+    token: str = Query(..., description="JWT authentication token"),
     service: ChatService = Depends(get_chat_service),
 ):
     """
     WebSocket endpoint for real-time chat.
+    
+    Requires authentication via token query parameter: /chat/ws/{client_id}?token=<jwt_token>
     
     Expected message format:
     {
@@ -62,6 +66,17 @@ async def websocket_chat(
     - For streaming: {"type": "chunk", "content": "..."} followed by {"type": "done", "sources": [...]}
     - For errors: {"type": "error", "detail": "..."}
     """
+    # Verify JWT token before accepting connection
+    payload = decode_token(token)
+    if payload is None:
+        await websocket.close(code=4001, reason="Invalid or expired token")
+        return
+    
+    user_id = payload.get("sub")
+    if user_id is None:
+        await websocket.close(code=4001, reason="Invalid token payload")
+        return
+    
     await manager.connect(websocket, client_id)
     
     try:
