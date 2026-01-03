@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.memory.session_buffer import get_session_buffer
 from app.memory.long_term import get_long_term_memory
 from app.models.schemas import ChatMessage
-from app.auth.dependencies import get_current_user
+from app.dependencies import get_current_user
 
 
 router = APIRouter()

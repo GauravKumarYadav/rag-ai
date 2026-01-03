@@ -11,7 +11,7 @@ from app.models.client import (
     get_client_store,
 )
 from app.rag.vector_store import get_client_vector_store, clear_client_vector_store_cache
-from app.auth.dependencies import get_current_user
+from app.dependencies import get_current_user
 
 
 router = APIRouter()

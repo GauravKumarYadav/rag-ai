@@ -15,8 +15,8 @@ from fastapi import (
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.models.schemas import ChatRequest, ChatResponse, ImageInput
-from app.services.chat_service import ChatService, get_chat_service
-from app.auth.dependencies import get_current_user
+from app.services.chat_service import ChatService
+from app.dependencies import get_current_user, get_chat_service
 
 router = APIRouter()
 

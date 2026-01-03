@@ -9,7 +9,8 @@ from pydantic import BaseModel
 
 from app.rag.vector_store import get_vector_store, get_client_vector_store
 from app.models.client import get_client_store
-from app.auth.dependencies import get_current_user
+from app.dependencies import get_current_user
+from app.processors import ProcessorRegistry, extract_text
 
 
 router = APIRouter()
@@ -171,40 +172,30 @@ async def upload_documents(
     for file in files:
         content = await file.read()
         filename = file.filename or "unknown"
+        mimetype = file.content_type
         
-        # Determine extraction method
-        is_pdf = filename.lower().endswith(".pdf")
-        is_docx = filename.lower().endswith(".docx")
-        is_image = filename.lower().endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp"))
-        
-        if (is_pdf or is_docx or is_image) and use_ocr:
-            # Use Docling for PDF/DOCX/images with OCR support
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as tmp:
-                    tmp.write(content)
-                    tmp_path = tmp.name
-                
-                text = extract_text_with_docling(tmp_path, fast_mode=fast_mode)
-                os.unlink(tmp_path)
-            except ValueError as e:
-                raise HTTPException(status_code=400, detail=str(e))
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Docling extraction failed: {e}")
-        elif is_pdf and not use_ocr:
-            # Use pypdf for fast text-based PDF extraction
-            try:
-                text = extract_text_from_pdf_pypdf(content)
-            except ValueError as e:
-                raise HTTPException(status_code=400, detail=str(e))
-        else:
-            # Plain text files
-            try:
-                text = content.decode("utf-8")
-            except UnicodeDecodeError:
+        # Use the processor registry to extract text
+        try:
+            if ProcessorRegistry.can_process(filename, mimetype):
+                # Get processor with optional config
+                from app.processors.base import ProcessorConfig
+                config = ProcessorConfig(
+                    use_ocr=use_ocr,
+                    fast_mode=fast_mode,
+                )
+                text = extract_text(content, filename, mimetype, config)
+            else:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"File {filename} is not valid UTF-8 text or supported format",
+                    detail=f"Unsupported file type: {filename}",
                 )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to extract text from {filename}: {str(e)}"
+            )
 
         if not text.strip():
             raise HTTPException(
@@ -390,3 +381,27 @@ async def clear_documents(
         return {"message": f"Cleared {len(doc_ids)} document chunks"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to clear documents: {str(e)}")
+
+
+@router.get("/formats", summary="List supported file formats")
+async def list_supported_formats():
+    """List all supported file formats for document upload.
+    
+    Returns information about each registered document processor,
+    including the file extensions and MIME types it supports.
+    """
+    extensions = ProcessorRegistry.list_processors()
+    mimetypes = ProcessorRegistry.list_mimetypes()
+    
+    return {
+        "supported_extensions": extensions,
+        "supported_mimetypes": mimetypes,
+        "processors": [
+            {
+                "name": processor_class.name,
+                "extensions": processor_class.supported_extensions,
+                "mimetypes": processor_class.supported_mimetypes,
+            }
+            for processor_class in set(ProcessorRegistry._processors.values())
+        ],
+    }
