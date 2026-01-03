@@ -30,6 +30,46 @@ class ChatService:
         self.client_extractor = client_extractor or get_client_extractor()
         self.client_store = client_store or ClientStore()
 
+    def _build_system_context(self) -> str:
+        """Build context about the system's clients and documents for the LLM."""
+        clients = self.client_store.list_all()
+        
+        if not clients:
+            return "\n\n[System Info: No clients registered. No documents available.]"
+        
+        context_parts = ["\n\n[System Information:"]
+        context_parts.append(f"Total clients: {len(clients)}")
+        
+        for client in clients:
+            client_store = get_client_vector_store(client.id)
+            doc_count = client_store.docs.count()
+            memory_count = client_store.memories.count()
+            
+            # Get unique document sources for this client
+            doc_sources = []
+            if doc_count > 0:
+                try:
+                    # Get all documents to extract unique sources
+                    all_docs = client_store.docs.get(include=["metadatas"])
+                    sources = set()
+                    for meta in all_docs.get("metadatas", []):
+                        if meta and meta.get("source"):
+                            sources.add(meta["source"])
+                    doc_sources = list(sources)
+                except Exception:
+                    pass
+            
+            context_parts.append(f"\nClient: {client.name} (ID: {client.id})")
+            context_parts.append(f"  - Documents: {doc_count}")
+            if doc_sources:
+                context_parts.append(f"  - Document files: {', '.join(doc_sources)}")
+            context_parts.append(f"  - Memories: {memory_count}")
+            if client.aliases:
+                context_parts.append(f"  - Aliases: {', '.join(client.aliases)}")
+        
+        context_parts.append("]")
+        return "\n".join(context_parts)
+
     async def _detect_client(self, message: str, conversation_id: str) -> Optional[str]:
         """Detect client from message using LLM and match against known clients."""
         extraction = await self.client_extractor.extract_client(message)
@@ -72,23 +112,46 @@ class ChatService:
             
             # Client-specific retrieval
             if client_id:
+                # Search only the specific client's documents
                 client_store = get_client_vector_store(client_id)
                 client_hits = client_store.query(
                     query=request.message, top_k=request.top_k, collection="documents"
                 )
                 # Prepend client-specific results (they're more relevant for this client)
                 retrieved = client_hits + retrieved
+            else:
+                # No specific client detected - search ALL client documents
+                # This ensures we find relevant context even without explicit client mention
+                all_clients = self.client_store.list_all()
+                all_client_hits = []
+                for client in all_clients:
+                    client_store = get_client_vector_store(client.id)
+                    if client_store.docs.count() > 0:
+                        hits = client_store.query(
+                            query=request.message, top_k=request.top_k, collection="documents"
+                        )
+                        # Add client name to metadata for context
+                        for hit in hits:
+                            hit.metadata["client_name"] = client.name
+                        all_client_hits.extend(hits)
+                
+                # Sort by score and take top_k best results across all clients
+                if all_client_hits:
+                    all_client_hits.sort(key=lambda x: x.score)
+                    retrieved = all_client_hits[:request.top_k] + retrieved
         
         memory_hits = self.long_term.retrieve(query=request.message)
         
-        # Build context message about current client
+        # Build context: system info + current client context
+        system_context = self._build_system_context()
         client_context = ""
         if client_id:
             client = self.client_store.get(client_id)
             if client:
                 client_context = f"\n\n[Current client context: {client.name}]"
         
-        system_prompt = (request.system_prompt or "") + client_context
+        # Include system context so LLM knows about available clients and documents
+        system_prompt = (request.system_prompt or "") + system_context + client_context
         messages = build_messages(
             system_prompt=system_prompt,
             user_text=request.message,
