@@ -50,7 +50,21 @@ class ChromaVectorStore(VectorStoreBase):
         # Initialize ChromaDB client
         if config.url:
             # Remote ChromaDB server
-            self.client = chromadb.HttpClient(host=config.url)
+            # Parse URL to extract host and port
+            url = config.url.rstrip("/")
+            if url.startswith("http://"):
+                url = url[7:]
+            elif url.startswith("https://"):
+                url = url[8:]
+            
+            if ":" in url:
+                host, port_str = url.rsplit(":", 1)
+                port = int(port_str)
+            else:
+                host = url
+                port = 8000  # Default ChromaDB port
+            
+            self.client = chromadb.HttpClient(host=host, port=port)
         else:
             # Local persistent storage
             self.client = chromadb.PersistentClient(path=self.path)
@@ -179,7 +193,21 @@ class ChromaClientVectorStore(ClientVectorStoreBase):
         
         # Initialize ChromaDB client
         if config.url:
-            self.chroma_client = chromadb.HttpClient(host=config.url)
+            # Parse URL to extract host and port
+            url = config.url.rstrip("/")
+            if url.startswith("http://"):
+                url = url[7:]
+            elif url.startswith("https://"):
+                url = url[8:]
+            
+            if ":" in url:
+                host, port_str = url.rsplit(":", 1)
+                port = int(port_str)
+            else:
+                host = url
+                port = 8000
+            
+            self.chroma_client = chromadb.HttpClient(host=host, port=port)
         else:
             self.chroma_client = chromadb.PersistentClient(path=self.path)
         

@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # RAG AI Backend - uses host.docker.internal for Docker or host.containers.internal for Podman
+  - job_name: "rag-ai-backend"
+    metrics_path: /metrics
+    static_configs:
+      # For Docker Desktop on macOS/Windows
+      - targets: ["host.docker.internal:8000"]
+        labels:
+          env: "local"
+    # Fallback for Podman or Linux Docker
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: "host.docker.internal:(.*)"
+        replacement: "host.containers.internal:$1"
+        target_label: __address__
+        action: replace
+
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

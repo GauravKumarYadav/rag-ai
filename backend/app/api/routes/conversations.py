@@ -103,29 +103,11 @@ async def list_conversations(
 ):
     """List all active conversations with metadata."""
     buffer = get_session_buffer()
-    conversation_ids = list(buffer.buffers.keys())
     
-    result = []
-    for conv_id in conversation_ids:
-        messages = buffer.get(conv_id)
-        meta = conversation_metadata.get(conv_id, {})
-        
-        # Generate title from first user message if not set
-        title = meta.get("title", "Conversation")
-        if title in ["New Conversation", "Conversation"] and messages:
-            for msg in messages:
-                if msg.role == "user":
-                    title = msg.content[:50] + ("..." if len(msg.content) > 50 else "")
-                    break
-        
-        result.append({
-            "id": conv_id,
-            "title": title,
-            "created_at": meta.get("created_at", ""),
-            "message_count": len(messages),
-        })
+    # Use Redis-backed list_conversations method
+    conversations = buffer.list_conversations()
     
-    return result
+    return {"conversations": conversations}
 
 
 @router.delete("/{conversation_id}", summary="Clear conversation history")
@@ -135,8 +117,7 @@ async def clear_conversation(
 ):
     """Clear the session history for a specific conversation."""
     buffer = get_session_buffer()
-    if conversation_id in buffer.buffers:
-        del buffer.buffers[conversation_id]
+    if buffer.delete(conversation_id):
         if conversation_id in conversation_metadata:
             del conversation_metadata[conversation_id]
         return {"message": f"Conversation '{conversation_id}' cleared"}
@@ -149,8 +130,7 @@ async def clear_all_conversations(
 ):
     """Clear all conversation histories."""
     buffer = get_session_buffer()
-    count = len(buffer.buffers)
-    buffer.buffers.clear()
+    count = buffer.clear_all()
     conversation_metadata.clear()
     return {"message": f"Cleared {count} conversations"}
 

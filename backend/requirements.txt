@@ -1,21 +1,18 @@
-fastapi
-uvicorn[standard]
-httpx
-python-multipart
-chromadb
-sentence-transformers
-opencv-python
-pytesseract
-pdfminer.six
-pypdf
-unstructured
-torch>=2.6.0
-Pillow
-pytest
-pytest-asyncio
-respx
-pydantic
-pydantic-settings
+# Core FastAPI
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+httpx>=0.26.0
+python-multipart>=0.0.6
+
+# Pydantic
+pydantic[email]>=2.5.0
+pydantic-settings>=2.1.0
+
+# ChromaDB client (connects to ChromaDB server via HTTP)
+chromadb>=0.4.22
+
+# Redis for session persistence
+redis>=5.0.0
 
 # Authentication
 python-jose[cryptography]>=3.3.0
@@ -23,4 +20,15 @@ bcrypt>=4.0.0
 
 # MySQL Audit Logging
 aiomysql>=0.2.0
+cryptography>=41.0.0
 
+# Observability
+prometheus-fastapi-instrumentator>=6.1.0
+
+# Scheduling
+apscheduler>=3.10.4
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+respx>=0.20.0

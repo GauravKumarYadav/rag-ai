@@ -62,14 +62,25 @@ class RAGSettings(BaseModel):
     # Local ChromaDB settings
     chroma_db_path: str = "./data/chroma"
     
-    # Embedding model
-    embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
+    # Embedding model (for Ollama: nomic-embed-text, for LMStudio: text-embedding-nomic-embed-text-v1.5)
+    embedding_model: str = "nomic-embed-text"
     
     # Cloud/remote store settings
     url: Optional[str] = None
     api_key: Optional[str] = None
     namespace: Optional[str] = None
     collection_prefix: str = ""
+    
+    # Embedding service URL (microservices mode)
+    embedding_service_url: Optional[str] = None
+
+
+class RedisSettings(BaseModel):
+    """Redis settings for sessions, caching, and queues."""
+    
+    url: str = "redis://localhost:6379"
+    session_ttl: int = 86400  # 24 hours
+    cache_ttl: int = 3600  # 1 hour
 
 
 class SessionSettings(BaseModel):
@@ -85,10 +96,16 @@ class ServerSettings(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8000
     cors_origins: List[str] = [
+        "http://localhost",
+        "http://localhost:80",
+        "http://127.0.0.1",
+        "http://127.0.0.1:80",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:8080",
         "http://127.0.0.1:8080",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
     ]
 
 
@@ -109,6 +126,54 @@ class MySQLSettings(BaseModel):
     user: str = "root"
     password: SecretStr = SecretStr("Sarita1!@2024_4")
     pool_size: int = 5
+
+
+class LoggingSettings(BaseModel):
+    """Structured logging settings."""
+    
+    # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    level: str = "INFO"
+    
+    # Log file settings
+    log_dir: str = "./logs"
+    log_file: str = "app.log"
+    
+    # File rotation settings
+    max_bytes: int = 10 * 1024 * 1024  # 10MB per file
+    backup_count: int = 30  # 30 days retention
+    
+    # Format settings
+    json_format: bool = True  # JSON for Loki/ELK, False for human-readable
+
+
+class EvaluationSettings(BaseModel):
+    """RAG evaluation framework settings."""
+    
+    # Default sample size for Q&A generation
+    default_sample_size: int = 50
+    
+    # Cron schedule for daily evaluation (default: 2 AM UTC)
+    cron_schedule: str = "0 2 * * *"
+    cron_timezone: str = "UTC"
+    
+    # Enable/disable scheduled evaluations
+    scheduler_enabled: bool = True
+    
+    # Metrics to compute
+    compute_precision: bool = True
+    compute_recall: bool = True
+    compute_mrr: bool = True
+    compute_faithfulness: bool = True
+
+
+class MonitoringSettings(BaseModel):
+    """Prometheus/Grafana monitoring settings."""
+    
+    # Enable Prometheus metrics endpoint
+    metrics_enabled: bool = True
+    
+    # Loki settings
+    loki_retention_days: int = 7
 
 
 class Settings(BaseSettings):
@@ -133,10 +198,14 @@ class Settings(BaseSettings):
     # Grouped settings
     llm: LLMSettings = LLMSettings()
     rag: RAGSettings = RAGSettings()
+    redis: RedisSettings = RedisSettings()
     session: SessionSettings = SessionSettings()
     server: ServerSettings = ServerSettings()
     jwt: JWTSettings = JWTSettings()
     mysql: MySQLSettings = MySQLSettings()
+    logging: LoggingSettings = LoggingSettings()
+    evaluation: EvaluationSettings = EvaluationSettings()
+    monitoring: MonitoringSettings = MonitoringSettings()
     
     # ============================================================
     # LEGACY ALIASES - For backwards compatibility

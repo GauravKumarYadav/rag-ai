@@ -4,127 +4,248 @@ A fully local AI chatbot with RAG, long-term memory, vision support, and multi-p
 
 ## Features
 
-- 🤖 **Multi-Provider LLM**: LMStudio, Ollama, OpenAI, or any OpenAI-compatible endpoint
+- 🤖 **Multi-Provider LLM**: Ollama (recommended), LMStudio, OpenAI, or any OpenAI-compatible endpoint
 - 📚 **RAG**: Upload documents and query them with semantic search
 - 🧠 **Long-term Memory**: Automatic conversation summarization and recall
-- 🖼️ **Vision Support**: Send images for analysis (with vision models)
+- 🖼️ **Vision Support**: Send images for analysis with vision models (llava, qwen2-vl)
 - 🔄 **Real-time Streaming**: WebSocket and SSE streaming responses
 - 🎨 **Modern Frontend**: Clean chat interface with settings panel
-- 🔌 **Modular Vector Store**: ChromaDB (default), with support for Pinecone, Weaviate, etc.
+- 🔌 **Modular Vector Store**: ChromaDB with Redis-cached embeddings
+- 🔐 **JWT Authentication**: Secure API with token-based authentication
+- 📈 **Monitoring Stack**: Prometheus metrics, Loki logs, Grafana dashboards
+- 🧪 **RAG Evaluation**: Automated quality testing with precision/recall metrics
+- 🛡️ **Admin Dashboard**: Audit logs, user management, and system statistics
+- 🐳 **Microservices Architecture**: Scalable containerized deployment
 
 ## Prerequisites
 
-- **Python 3.11+**
+- **Podman** or **Docker** (for microservices deployment)
 - **Git**
-- **LMStudio** or **Ollama** (for local LLM inference)
+- **Python 3.11+** (optional, for standalone mode)
 
 ---
 
-## Quick Start
+## Quick Start (Microservices Mode - Recommended)
 
-### 1. Clone and Install Dependencies
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/GauravKumarYadav/rag-ai.git
 cd rag-ai
+```
 
-# Create virtual environment and install packages
+### 2. Start All Services
+
+```bash
+# Using Podman (recommended)
+podman-compose -f docker-compose.microservices.yml up -d
+
+# Or using Docker
+docker-compose -f docker-compose.microservices.yml up -d
+```
+
+This starts 14 services:
+- **rag-ollama** (port 11434) - LLM inference
+- **rag-chat-api** (port 8000) - Main API
+- **rag-embedding-service** (port 8010) - Embedding with caching
+- **rag-document-api** (port 8003) - Document processing
+- **rag-chromadb** (port 8020) - Vector database
+- **rag-mysql** (port 3307) - User auth & audit logs
+- **rag-redis** (port 6379) - Caching
+- **rag-nginx** (port 80) - Frontend & reverse proxy
+- **rag-grafana** (port 3000) - Monitoring dashboards
+- **rag-prometheus** (port 9090) - Metrics
+- **rag-loki** (port 3100) - Log aggregation
+- **rag-promtail** - Log collector
+- **rag-document-worker** - Background processing
+- **rag-evaluation-worker** - RAG evaluation
+
+### 3. Pull Required Ollama Models
+
+```bash
+# Chat model (required, ~1.3GB)
+podman exec rag-ollama ollama pull llama3.2:1b
+
+# Embedding model (required, ~274MB)
+podman exec rag-ollama ollama pull nomic-embed-text
+
+# Vision model (optional, ~4.7GB)
+podman exec rag-ollama ollama pull llava:7b
+```
+
+### 4. Verify Services
+
+```bash
+# Check all containers are running
+podman ps --format "table {{.Names}}\t{{.Status}}"
+
+# Test the chat API
+TOKEN=$(curl -s http://localhost:8000/auth/login -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | jq -r '.access_token')
+
+curl -s http://localhost:8000/chat -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hello!","stream":false}' | jq '.response'
+```
+
+### 5. Access the Application
+
+- **Frontend**: http://localhost
+- **API Docs**: http://localhost:8000/docs
+- **Grafana**: http://localhost:3000 (admin/admin)
+- **Prometheus**: http://localhost:9090
+
+**Default credentials**: `admin` / `admin123`
+
+---
+
+## Standalone Mode (Development)
+
+For development without containers:
+---
+
+## Standalone Mode (Development)
+
+For development without containers:
+
+### 1. Install Dependencies
+
+```bash
 python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
-### 2. Set Up LLM Provider
-
-#### Option A: LMStudio (Recommended)
-
-1. Download [LMStudio](https://lmstudio.ai)
-2. Download models:
-   - **Chat Model**: `Qwen2.5-VL`, `Llama-3`, `Mistral`
-   - **Embedding Model**: `nomic-embed-text-v1.5` (required for RAG)
-3. Go to **Local Server** tab → Load models → **Start Server**
-4. Server runs at `http://localhost:1234`
-
-#### Option B: Ollama
+### 2. Install and Start Ollama
 
 ```bash
-# Install Ollama: https://ollama.ai
-ollama pull llama3
-ollama pull nomic-embed-text  # For embeddings
+# Install from https://ollama.ai
+ollama pull llama3.2:1b
+ollama pull nomic-embed-text
 ollama serve  # Runs at http://localhost:11434
 ```
 
-#### Option C: OpenAI
+### 3. Start MySQL
 
 ```bash
-cp .env.example .env
-# Edit .env and add: OPENAI_API_KEY=sk-...
+# Using Docker
+docker run -d --name mysql -p 3306:3306 \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=chatbot \
+  mysql:8.0
+
+# Initialize database
+mysql -u root -p < docker/mysql/init.sql
 ```
-
-### 3. Set Up ChromaDB (Vector Database)
-
-ChromaDB runs automatically in **embedded mode** - no extra setup needed!
-
-**For production (server mode):**
-
-```bash
-# Run ChromaDB as a Docker service
-docker run -d \
-  --name chromadb \
-  -p 8001:8000 \
-  -v $(pwd)/data/chroma:/chroma/chroma \
-  chromadb/chroma:latest
-
-# Verify it's running
-curl http://localhost:8001/api/v2/heartbeat
-
-# Update .env to use server mode
-echo "VECTOR_STORE_URL=http://localhost:8001" >> .env
-```
-
-📖 See [ChromaDB Setup Guide](./CHROMADB.md) for detailed instructions including systemd/launchd services.
 
 ### 4. Configure Environment
 
 ```bash
 cp .env.example .env
-# Edit .env to match your provider settings
-```
-
-Key settings in `.env`:
-```bash
-# LLM Provider
-LLM_PROVIDER=lmstudio
-LMSTUDIO_BASE_URL=http://localhost:1234/v1
-LMSTUDIO_MODEL=qwen2.5-vl-7b-instruct
-
-# Embeddings
-EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5
-
-# Vector Store (modular architecture)
-VECTOR_STORE_PROVIDER=chromadb
-CHROMA_DB_PATH=./data/chroma
-# VECTOR_STORE_URL=http://localhost:8001  # Uncomment for server mode
+# Edit .env:
+# LLM_PROVIDER=ollama
+# OLLAMA_BASE_URL=http://localhost:11434
+# OLLAMA_MODEL=llama3.2:1b
 ```
 
 ### 5. Start the Backend
 
 ```bash
-source .venv/bin/activate
 make dev
 # API at http://localhost:8000
-# Docs at http://localhost:8000/docs
 ```
 
 ### 6. Start the Frontend
 
 ```bash
-# In a new terminal
 make frontend
 # Opens at http://localhost:3000
 ```
 
-### 7. Upload Documents (Optional)
+---
+
+## Vision Models
+
+For image analysis, pull and use vision-capable models:
+
+```bash
+# Pull vision models
+podman exec rag-ollama ollama pull llava:7b
+# or: ollama pull qwen2-vl:7b
+
+# The application automatically detects Ollama and formats
+# image requests correctly (images as base64 list)
+```
+
+### Sending Images via API
+
+```bash
+# Get auth token
+TOKEN=$(curl -s http://localhost:8000/auth/login -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin123"}' | jq -r '.access_token')
+
+# Send image for analysis
+curl -X POST http://localhost:8000/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What is in this image?",
+    "images": [{"data": "BASE64_IMAGE_DATA", "media_type": "image/png"}],
+    "stream": false
+  }'
+```
+
+---
+
+## Environment Configuration
+
+Key settings in `.env`:
+
+```bash
+# LLM Provider (ollama, lmstudio, openai, custom)
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_MODEL=llama3.2:1b
+
+# Embeddings
+EMBEDDING_MODEL=nomic-embed-text
+
+# Database
+MYSQL_HOST=mysql
+MYSQL_PORT=3306
+MYSQL_DATABASE=chatbot
+MYSQL_USER=chatbot
+MYSQL_PASSWORD=chatbot_password
+
+# Redis (for embedding cache)
+REDIS_URL=redis://redis:6379
+
+# ChromaDB
+CHROMADB_HOST=chromadb
+CHROMADB_PORT=8000
+
+# Logging
+LOGGING_LEVEL=INFO
+```
+
+---
+
+## Monitoring
+
+Open http://localhost:8000/admin.html and login with:
+- **Username**: admin
+- **Password**: admin123
+
+The admin dashboard provides:
+- Audit log viewer
+- User management
+- RAG evaluation runs
+- System statistics
+
+### 10. Upload Documents (Optional)
 
 **Via UI:** Drag & drop files into the upload area
 
@@ -158,6 +279,16 @@ make docker-down
 
 ## API Endpoints
 
+### Authentication
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/auth/register` | POST | Register new user |
+| `/api/v1/auth/login` | POST | Login and get JWT token |
+| `/api/v1/auth/me` | GET | Get current user info |
+
+### Core API
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/chat` | POST | Chat with streaming support |
@@ -168,6 +299,24 @@ make docker-down
 | `/models` | GET | List available models |
 | `/models/switch` | POST | Switch LLM provider |
 | `/health` | GET | Health check |
+| `/metrics` | GET | Prometheus metrics |
+
+### Admin API (Superuser only)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/admin/audit-logs` | GET | View audit logs |
+| `/api/v1/admin/users` | GET/POST | Manage users |
+| `/api/v1/admin/stats` | GET | System statistics |
+| `/api/v1/admin/config` | GET | View configuration |
+
+### Evaluation API (Superuser only)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/evaluation/generate` | POST | Generate test dataset |
+| `/api/v1/evaluation/datasets` | GET | List datasets |
+| `/api/v1/evaluation/runs` | POST/GET | Run/list evaluations |
 
 ---
 
@@ -199,6 +348,15 @@ curl -X POST http://localhost:8000/models/switch \
 | `VECTOR_STORE_URL` | (none) | Remote ChromaDB server URL |
 | `LLM_TEMPERATURE` | `0.25` | Response creativity (0-1) |
 | `LLM_MAX_TOKENS` | `1024` | Max response length |
+| `DATABASE_HOST` | `localhost` | MySQL host |
+| `DATABASE_PORT` | `3306` | MySQL port |
+| `DATABASE_NAME` | `audit_logs` | MySQL database name |
+| `DATABASE_USER` | `root` | MySQL username |
+| `DATABASE_PASSWORD` | - | MySQL password (required) |
+| `JWT_SECRET_KEY` | - | JWT signing key (required) |
+| `LOGGING_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
+| `EVALUATION_ENABLED` | `true` | Enable scheduled evaluations |
+| `EVALUATION_SCHEDULE_CRON` | `0 2 * * *` | Evaluation cron (UTC) |
 
 ---
 
@@ -217,10 +375,89 @@ curl -X POST http://localhost:8000/models/switch \
 - See [ChromaDB Setup Guide](./CHROMADB.md) for detailed troubleshooting
 - Check data directory permissions: `chmod -R 755 ./data/chroma`
 
+### MySQL Connection Failed
+- Ensure MySQL is running: `systemctl status mysql` or `brew services list`
+- Check credentials in `.env` match your MySQL setup
+- Verify database exists: `mysql -u root -p -e "SHOW DATABASES;"`
+- Re-run init script if needed: `mysql -u root -p < docker/mysql/init.sql`
+
+### JWT Authentication Errors
+- Ensure `JWT_SECRET_KEY` is set in `.env`
+- Generate a new key: `openssl rand -hex 32`
+- Clear browser local storage if tokens are stale
+
+### Monitoring Stack Issues
+- Check containers are running: `podman ps` or `docker ps`
+- Verify Prometheus scraping: http://localhost:9090/targets
+- Check Loki health: `curl http://localhost:3100/ready`
+- See [Monitoring Guide](./MONITORING.md) for troubleshooting
+
+---
+
+## Deploying to Another Machine
+
+### 1. Clone and Install
+
+```bash
+git clone https://github.com/GauravKumarYadav/rag-ai.git
+cd rag-ai
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+```
+
+### 2. Set Up Services
+
+```bash
+# MySQL
+cd docker/mysql && podman-compose up -d && cd ../..
+
+# ChromaDB (if using server mode)
+cd docker/chromadb && podman-compose up -d && cd ../..
+
+# Monitoring (optional)
+cd docker/monitoring && podman-compose up -d && cd ../..
+```
+
+### 3. Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env with your settings:
+# - DATABASE_PASSWORD
+# - JWT_SECRET_KEY
+# - LLM provider settings
+```
+
+### 4. Start Application
+
+```bash
+make dev        # Backend
+make frontend   # Frontend (new terminal)
+```
+
+### 5. Verify Installation
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Get JWT token
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | jq -r '.access_token')
+
+# Test authenticated endpoint
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/v1/auth/me
+```
+
 ---
 
 ## Additional Documentation
 
 - [README.md](../README.md) - Project overview
+- [Architecture Guide](./ARCHITECTURE.md) - System architecture
 - [ChromaDB Setup](./CHROMADB.md) - Vector database configuration
+- [Monitoring Guide](./MONITORING.md) - Prometheus, Loki, Grafana
+- [Evaluation Guide](./EVALUATION.md) - RAG evaluation framework
 - [API Docs](http://localhost:8000/docs) - Interactive API documentation (when running)

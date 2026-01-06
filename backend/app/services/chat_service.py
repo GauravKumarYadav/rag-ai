@@ -155,6 +155,10 @@ class ChatService:
         
         # Include system context so LLM knows about available clients and documents
         system_prompt = (request.system_prompt or "") + system_context + client_context
+        
+        # Get provider type for correct message formatting (ollama vs openai)
+        provider = getattr(self.lm_client, "provider", "ollama")
+        
         messages = build_messages(
             system_prompt=system_prompt,
             user_text=request.message,
@@ -162,6 +166,7 @@ class ChatService:
             retrieved_docs=retrieved,
             memory_hits=memory_hits,
             session_messages=history,
+            provider=provider,
         )
 
         result = await self.lm_client.chat(messages, stream=request.stream)

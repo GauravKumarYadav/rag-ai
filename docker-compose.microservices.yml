@@ -1,0 +1,373 @@
+# RAG AI Microservices Architecture
+# ================================
+# This docker-compose file runs the complete microservices stack:
+# - Ollama (LLM + Embeddings)
+# - Redis (Queue, Cache, Sessions)
+# - MySQL (Audit, Users, Evaluation)
+# - ChromaDB (Vector Store)
+# - Embedding Service
+# - Document API
+# - Document Worker (scalable)
+# - Evaluation Worker
+# - Chat API (main backend)
+# - Frontend + Nginx
+# - Monitoring (Prometheus, Loki, Grafana)
+
+version: "3.9"
+
+services:
+  # ============================================================
+  # INFRASTRUCTURE SERVICES
+  # ============================================================
+  
+  # Ollama - Local LLM server (replaces LMStudio)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          memory: 4G
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Redis - Message Queue, Cache, Sessions
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MySQL - Audit Logging, Users, Evaluation
+  mysql:
+    image: mysql:8.0
+    container_name: rag-mysql
+    ports:
+      - "3307:3306"  # Use 3307 to avoid conflict with local MySQL
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-Sarita1!@2024_4}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-audit_logs}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-Sarita1!@2024_4}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ChromaDB - Vector Database Server
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: rag-chromadb
+    ports:
+      - "8020:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+      - ALLOW_RESET=TRUE
+    restart: unless-stopped
+    # Note: Health check disabled - container is minimal without curl/python
+    # ChromaDB health can be verified via: curl http://localhost:8020/api/v2/heartbeat
+
+  # ============================================================
+  # MICROSERVICES
+  # ============================================================
+
+  # Embedding Service - Dedicated embedding generation
+  embedding-service:
+    build:
+      context: ./services/embedding-service
+      dockerfile: Dockerfile
+    container_name: rag-embedding-service
+    ports:
+      - "8010:8000"
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      - REDIS_URL=redis://redis:6379
+      - CACHE_TTL=86400
+    depends_on:
+      ollama:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Document API - Document upload and management
+  document-api:
+    build:
+      context: ./services/document-api
+      dockerfile: Dockerfile
+    container_name: rag-document-api
+    ports:
+      - "8003:8000"  # Changed from 8002 to avoid conflict
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CHROMADB_URL=http://chromadb:8000
+      - EMBEDDING_SERVICE_URL=http://embedding-service:8000
+      - QUEUE_NAME=document_jobs
+      - MAX_FILE_SIZE=52428800
+    depends_on:
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Document Worker - Background document processing
+  document-worker:
+    build:
+      context: ./services/document-worker
+      dockerfile: Dockerfile
+    container_name: rag-document-worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CHROMADB_URL=http://chromadb:8000
+      - EMBEDDING_SERVICE_URL=http://embedding-service:8000
+      - QUEUE_NAME=document_jobs
+      - WORKER_ID=worker-1
+      - CHUNK_SIZE=1200
+      - CHUNK_OVERLAP=200
+    depends_on:
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+      embedding-service:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      replicas: 1  # Can scale up for more processing power
+
+  # Evaluation Worker - Scheduled RAG evaluation
+  evaluation-worker:
+    build:
+      context: ./services/evaluation-worker
+      dockerfile: Dockerfile
+    container_name: rag-evaluation-worker
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${MYSQL_ROOT_PASSWORD:-Sarita1!@2024_4}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-audit_logs}
+      - CHROMADB_URL=http://chromadb:8000
+      - EMBEDDING_SERVICE_URL=http://embedding-service:8000
+      - OLLAMA_URL=http://ollama:11434
+      - CHAT_MODEL=${CHAT_MODEL:-llama3.2:1b}
+      - CRON_SCHEDULE=${EVAL_CRON_SCHEDULE:-0 2 * * *}
+      - CRON_TIMEZONE=UTC
+      - RUN_ON_STARTUP=false
+    depends_on:
+      mysql:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+      embedding-service:
+        condition: service_started
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  # ============================================================
+  # MAIN APPLICATION
+  # ============================================================
+
+  # Chat API - Main backend service
+  chat-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rag-chat-api
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM Configuration - Use Ollama
+      - LLM__PROVIDER=ollama
+      - LLM__OLLAMA__BASE_URL=http://ollama:11434
+      - LLM__OLLAMA__MODEL=${CHAT_MODEL:-llama3.2:1b}
+      - LLM__TEMPERATURE=${LLM_TEMPERATURE:-0.25}
+      - LLM__MAX_TOKENS=${LLM_MAX_TOKENS:-1024}
+      # RAG Configuration - Use ChromaDB server
+      - RAG__PROVIDER=chromadb
+      - RAG__CHROMA_URL=http://chromadb:8000
+      - RAG__EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      # Use embedding service instead of direct Ollama
+      - EMBEDDING_SERVICE_URL=http://embedding-service:8000
+      # Redis for sessions
+      - REDIS__URL=redis://redis:6379
+      # JWT Authentication
+      - JWT__SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production-use-strong-secret}
+      - JWT__ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT__ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      # MySQL Audit Logging
+      - MYSQL__HOST=mysql
+      - MYSQL__PORT=3306
+      - MYSQL__DATABASE=${MYSQL_DATABASE:-audit_logs}
+      - MYSQL__USER=root
+      - MYSQL__PASSWORD=${MYSQL_ROOT_PASSWORD:-Sarita1!@2024_4}
+      # Disable in-process evaluation (handled by worker)
+      - EVALUATION_SCHEDULER_ENABLED=false
+    volumes:
+      - ./data/raw:/app/data/raw:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================================
+  # FRONTEND & GATEWAY
+  # ============================================================
+
+  # Nginx - Reverse proxy and static file server
+  nginx:
+    image: nginx:alpine
+    container_name: rag-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./docker/nginx/microservices.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - chat-api
+      - document-api
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================
+  # MONITORING STACK
+  # ============================================================
+
+  # Prometheus - Metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: rag-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/monitoring/prometheus-microservices.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  # Loki - Log aggregation
+  loki:
+    image: grafana/loki:latest
+    container_name: rag-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./docker/monitoring/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/loki-config.yaml
+    restart: unless-stopped
+
+  # Promtail - Log shipping
+  promtail:
+    image: grafana/promtail:latest
+    container_name: rag-promtail
+    volumes:
+      - ./docker/monitoring/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  # Grafana - Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: rag-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./docker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
+# ============================================================
+# VOLUMES
+# ============================================================
+volumes:
+  ollama_data:
+    name: rag-ollama-data
+  redis_data:
+    name: rag-redis-data
+  mysql_data:
+    name: rag-mysql-data
+  chroma_data:
+    name: rag-chroma-data
+  prometheus_data:
+    name: rag-prometheus-data
+  loki_data:
+    name: rag-loki-data
+  grafana_data:
+    name: rag-grafana-data
+
+# ============================================================
+# NETWORKS (optional, all on default bridge)
+# ============================================================
+networks:
+  default:
+    name: rag-network

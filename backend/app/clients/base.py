@@ -141,7 +141,10 @@ class OpenAICompatibleClient(BaseLLMClient):
 class OllamaClient(BaseLLMClient):
     """
     Native Ollama client with Ollama-specific features.
+    Supports both text-only and vision models (llava, qwen-vl, etc.).
     """
+    
+    provider = "ollama"  # Provider identifier for message formatting
     
     def __init__(
         self,

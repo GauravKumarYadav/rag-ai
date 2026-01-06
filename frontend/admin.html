@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --muted: #94a3b8;
+            --text: #e2e8f0;
+            --border: #293548;
+            --success: #10b981;
+            --error: #ef4444;
+            --radius: 12px;
+            --shadow: 0 12px 30px rgba(0,0,0,0.35);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+        a { color: inherit; text-decoration: none; }
+
+        .app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+        header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; border-bottom: 1px solid var(--border); background: #111827; position: sticky; top: 0; z-index: 10; }
+        .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: 0.4px; }
+        .brand-badge { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--primary), #8b5cf6); display: grid; place-items: center; font-weight: 800; box-shadow: var(--shadow); }
+        nav { display: flex; gap: 12px; }
+        .tab { padding: 10px 14px; border-radius: 10px; background: transparent; color: var(--muted); border: 1px solid transparent; cursor: pointer; transition: 0.15s; }
+        .tab.active { background: rgba(99,102,241,0.12); color: #fff; border-color: var(--primary); box-shadow: 0 6px 18px rgba(99,102,241,0.25); }
+        .tab:hover { color: #fff; border-color: var(--border); }
+        .actions { display: flex; gap: 10px; align-items: center; }
+        .pill { padding: 8px 12px; border-radius: 999px; background: rgba(99,102,241,0.14); color: #fff; border: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
+        button.btn { border: none; cursor: pointer; border-radius: 10px; padding: 10px 14px; background: var(--primary); color: #fff; font-weight: 600; transition: 0.15s; }
+        button.btn:hover { background: var(--primary-hover); }
+        button.btn.secondary { background: #233045; color: #d7e3f4; border: 1px solid var(--border); }
+        button.btn.secondary:hover { border-color: var(--primary); }
+
+        .grid { display: grid; gap: 16px; padding: 18px 22px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+        .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; min-height: 200px; }
+        .panel h3 { margin-bottom: 12px; font-size: 16px; letter-spacing: 0.2px; }
+        .panel .muted { color: var(--muted); font-size: 13px; }
+
+        .table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 14px; }
+        .table th, .table td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border); }
+        .table th { color: var(--muted); font-weight: 600; }
+        .table tr:hover td { background: rgba(255,255,255,0.02); }
+
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 12px; }
+        .stat { padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: #162033; box-shadow: var(--shadow); }
+        .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat .value { font-size: 20px; font-weight: 700; margin-top: 6px; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 10px; margin-top: 10px; }
+        label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; }
+        input, select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: #0f172a; color: #fff; }
+        .chip { display: inline-block; padding: 4px 8px; border-radius: 999px; background: rgba(99,102,241,0.15); color: #fff; font-size: 12px; border: 1px solid rgba(255,255,255,0.08); }
+
+        .login-card { max-width: 420px; margin: 120px auto; background: #111827; padding: 22px; border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow); }
+        .login-card h2 { margin-bottom: 10px; }
+        .login-card .muted { margin-bottom: 16px; display: block; }
+
+        .hidden { display: none; }
+        .badge-success { color: #34d399; }
+        .badge-error { color: var(--error); }
+    </style>
+</head>
+<body>
+<div id="authView" class="login-card hidden">
+    <div class="brand" style="margin-bottom: 12px;">
+        <div class="brand-badge">A</div>
+        <div>
+            <div>Admin Console</div>
+            <div class="muted">Authenticate to manage the system</div>
+        </div>
+    </div>
+    <div class="form-grid">
+        <div>
+            <label for="loginUser">Username</label>
+            <input id="loginUser" placeholder="admin">
+        </div>
+        <div>
+            <label for="loginPass">Password</label>
+            <input id="loginPass" type="password" placeholder="••••••">
+        </div>
+    </div>
+    <div style="margin-top: 12px; display: flex; gap: 10px;">
+        <button class="btn" id="loginBtn">Sign In</button>
+        <div id="loginError" class="muted badge-error" style="display:none;">Invalid credentials</div>
+    </div>
+</div>
+
+<div id="app" class="app hidden">
+    <header>
+        <div class="brand">
+            <div class="brand-badge">A</div>
+            <div>Admin Dashboard</div>
+        </div>
+        <nav id="tabs"></nav>
+        <div class="actions">
+            <div id="userBadge" class="pill">-</div>
+            <button class="btn secondary" id="logoutBtn">Logout</button>
+        </div>
+    </header>
+
+    <main id="content"></main>
+</div>
+
+<script>
+    const API_BASE = window.location.origin.replace(/:\d+$/, ':8000');
+    const tabs = [
+        { id: 'audit', label: 'Audit Logs', icon: 'fa-list-check' },
+        { id: 'users', label: 'Users', icon: 'fa-user-shield' },
+        { id: 'evaluation', label: 'Evaluation', icon: 'fa-vial' },
+        { id: 'stats', label: 'Stats', icon: 'fa-chart-line' },
+    ];
+
+    let authToken = localStorage.getItem('auth_token');
+    let currentTab = 'audit';
+
+    const authView = document.getElementById('authView');
+    const appView = document.getElementById('app');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const loginError = document.getElementById('loginError');
+    const userBadge = document.getElementById('userBadge');
+    const content = document.getElementById('content');
+    const tabsContainer = document.getElementById('tabs');
+
+    tabsContainer.innerHTML = tabs.map(t => `<button class="tab" data-id="${t.id}"><i class="fa ${t.icon}"></i> ${t.label}</button>`).join('');
+    tabsContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('button.tab');
+        if (!btn) return;
+        currentTab = btn.dataset.id;
+        renderTabs();
+        loadTab();
+    });
+
+    loginBtn.addEventListener('click', async () => {
+        const username = document.getElementById('loginUser').value.trim();
+        const password = document.getElementById('loginPass').value;
+        loginBtn.disabled = true;
+        loginError.style.display = 'none';
+        try {
+            const res = await fetch(`${API_BASE}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password }),
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'Login failed');
+            }
+            const data = await res.json();
+            authToken = data.access_token;
+            localStorage.setItem('auth_token', authToken);
+            await bootstrap();
+        } catch (err) {
+            loginError.textContent = err.message;
+            loginError.style.display = 'block';
+        } finally {
+            loginBtn.disabled = false;
+        }
+    });
+
+    logoutBtn.addEventListener('click', () => {
+        authToken = null;
+        localStorage.removeItem('auth_token');
+        appView.classList.add('hidden');
+        authView.classList.remove('hidden');
+    });
+
+    function getHeaders() {
+        return { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` };
+    }
+
+    async function bootstrap() {
+        try {
+            const me = await fetch(`${API_BASE}/auth/me`, { headers: getHeaders() });
+            if (!me.ok) throw new Error('Auth failed');
+            const user = await me.json();
+            userBadge.textContent = user.username || 'user';
+            authView.classList.add('hidden');
+            appView.classList.remove('hidden');
+            renderTabs();
+            loadTab();
+        } catch (err) {
+            authView.classList.remove('hidden');
+            appView.classList.add('hidden');
+            loginError.textContent = err.message;
+            loginError.style.display = 'block';
+        }
+    }
+
+    function renderTabs() {
+        Array.from(tabsContainer.querySelectorAll('.tab')).forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.id === currentTab);
+        });
+    }
+
+    async function loadTab() {
+        if (currentTab === 'audit') return renderAudit();
+        if (currentTab === 'users') return renderUsers();
+        if (currentTab === 'evaluation') return renderEvaluation();
+        if (currentTab === 'stats') return renderStats();
+    }
+
+    async function renderAudit() {
+        content.innerHTML = `<div class="grid" style="grid-template-columns: 1fr;">
+            <div class="panel">
+                <h3>Audit Log Filters</h3>
+                <div class="form-grid" style="grid-template-columns: repeat(5, 1fr);">
+                    <div><label>Username</label><input id="filterUser" placeholder="Filter by user" /></div>
+                    <div><label>Action</label><select id="filterAction"><option value="">All Actions</option></select></div>
+                    <div><label>Method</label><select id="filterMethod"><option value="">All Methods</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></div>
+                    <div><label>Status Code</label><input id="filterStatus" type="number" placeholder="e.g. 200" /></div>
+                    <div style="display:flex;align-items:flex-end;"><button class="btn" id="applyFilters">Apply</button></div>
+                </div>
+            </div>
+            <div class="panel" id="auditPanel"><h3>Recent Audit Logs</h3><div class="muted">Loading...</div></div>
+        </div>`;
+        
+        // Load action filter options
+        try {
+            const actRes = await fetch(`${API_BASE}/admin/audit-logs/actions`, { headers: getHeaders() });
+            if (actRes.ok) {
+                const actions = await actRes.json();
+                const select = document.getElementById('filterAction');
+                actions.forEach(a => { const opt = document.createElement('option'); opt.value = a; opt.textContent = a; select.appendChild(opt); });
+            }
+        } catch (e) {}
+        
+        document.getElementById('applyFilters').addEventListener('click', loadAuditLogs);
+        loadAuditLogs();
+    }
+    
+    async function loadAuditLogs() {
+        const user = document.getElementById('filterUser')?.value || '';
+        const action = document.getElementById('filterAction')?.value || '';
+        const method = document.getElementById('filterMethod')?.value || '';
+        const status = document.getElementById('filterStatus')?.value || '';
+        
+        let url = `${API_BASE}/admin/audit-logs?page=1&page_size=50`;
+        if (user) url += `&username=${encodeURIComponent(user)}`;
+        if (action) url += `&action=${encodeURIComponent(action)}`;
+        if (method) url += `&method=${encodeURIComponent(method)}`;
+        if (status) url += `&status_code=${status}`;
+        
+        try {
+            const res = await fetch(url, { headers: getHeaders() });
+            if (!res.ok) throw new Error('Failed to load logs');
+            const data = await res.json();
+            const rows = data.items.map(log => `
+                <tr>
+                    <td>${log.username || '-'}</td>
+                    <td><span class="chip">${log.action}</span></td>
+                    <td>${log.method || ''} ${log.path || ''}</td>
+                    <td class="${log.status_code >= 400 ? 'badge-error' : ''}">${log.status_code || ''}</td>
+                    <td>${log.duration_ms ? log.duration_ms.toFixed(0) + 'ms' : '-'}</td>
+                    <td>${new Date(log.timestamp).toLocaleString()}</td>
+                </tr>
+            `).join('');
+            document.getElementById('auditPanel').innerHTML = `
+                <h3>Audit Logs (${data.total} total)</h3>
+                <table class="table">
+                    <thead><tr><th>User</th><th>Action</th><th>Path</th><th>Status</th><th>Duration</th><th>When</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="6" class="muted">No logs found</td></tr>'}</tbody>
+                </table>
+            `;
+        } catch (err) {
+            document.getElementById('auditPanel').innerHTML = `<h3>Audit Logs</h3><div class="muted badge-error">${err.message}</div>`;
+        }
+    }
+
+    async function renderUsers() {
+        content.innerHTML = `<div class="grid">
+            <div class="panel" id="userList"><h3>Users</h3><div class="muted">Loading...</div></div>
+            <div class="panel">
+                <h3>Create User</h3>
+                <div class="form-grid">
+                    <div><label>Username</label><input id="newUser" placeholder="jane" /></div>
+                    <div><label>Email</label><input id="newEmail" placeholder="jane@example.com" /></div>
+                    <div><label>Password</label><input id="newPass" type="password" /></div>
+                    <div><label>Role</label><select id="newRole"><option value="false">User</option><option value="true">Admin</option></select></div>
+                </div>
+                <div style="margin-top:10px;"><button class="btn" id="createUserBtn">Create</button><span id="userMsg" class="muted" style="margin-left:8px;"></span></div>
+            </div>
+            <div class="panel" id="editUserPanel" style="display:none;">
+                <h3>Edit User</h3>
+                <input type="hidden" id="editUserId" />
+                <div class="form-grid">
+                    <div><label>Email</label><input id="editEmail" placeholder="new@example.com" /></div>
+                    <div><label>New Password (leave blank to keep)</label><input id="editPass" type="password" /></div>
+                    <div><label>Role</label><select id="editRole"><option value="false">User</option><option value="true">Admin</option></select></div>
+                    <div><label>Status</label><select id="editStatus"><option value="true">Active</option><option value="false">Disabled</option></select></div>
+                </div>
+                <div style="margin-top:10px;">
+                    <button class="btn" id="saveUserBtn">Save</button>
+                    <button class="btn secondary" id="cancelEditBtn">Cancel</button>
+                    <span id="editMsg" class="muted" style="margin-left:8px;"></span>
+                </div>
+            </div>
+        </div>`;
+
+        document.getElementById('createUserBtn').addEventListener('click', async () => {
+            const username = document.getElementById('newUser').value.trim();
+            const email = document.getElementById('newEmail').value.trim();
+            const password = document.getElementById('newPass').value;
+            const is_superuser = document.getElementById('newRole').value === 'true';
+            const msg = document.getElementById('userMsg');
+            msg.textContent = '...';
+            try {
+                const res = await fetch(`${API_BASE}/admin/users`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ username, email, password, is_superuser }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+                msg.textContent = 'User created';
+                document.getElementById('newUser').value = '';
+                document.getElementById('newEmail').value = '';
+                document.getElementById('newPass').value = '';
+                loadUserList();
+            } catch (err) {
+                msg.textContent = err.message;
+            }
+        });
+        
+        document.getElementById('saveUserBtn').addEventListener('click', async () => {
+            const userId = document.getElementById('editUserId').value;
+            const email = document.getElementById('editEmail').value.trim() || null;
+            const password = document.getElementById('editPass').value || null;
+            const is_superuser = document.getElementById('editRole').value === 'true';
+            const is_active = document.getElementById('editStatus').value === 'true';
+            const msg = document.getElementById('editMsg');
+            msg.textContent = '...';
+            try {
+                const body = { is_superuser, is_active };
+                if (email) body.email = email;
+                if (password) body.password = password;
+                const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
+                    method: 'PATCH',
+                    headers: getHeaders(),
+                    body: JSON.stringify(body),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+                msg.textContent = 'Updated!';
+                document.getElementById('editUserPanel').style.display = 'none';
+                loadUserList();
+            } catch (err) {
+                msg.textContent = err.message;
+            }
+        });
+        
+        document.getElementById('cancelEditBtn').addEventListener('click', () => {
+            document.getElementById('editUserPanel').style.display = 'none';
+        });
+
+        loadUserList();
+    }
+    
+    async function loadUserList() {
+        try {
+            const res = await fetch(`${API_BASE}/admin/users?limit=100`, { headers: getHeaders() });
+            if (!res.ok) throw new Error('Failed to load users');
+            const data = await res.json();
+            const rows = data.map(u => `
+                <tr data-user='${JSON.stringify(u).replace(/'/g, "&#39;")}'>
+                    <td>${u.username}</td>
+                    <td>${u.email || '-'}</td>
+                    <td>${u.is_superuser ? '<span class="badge-success">Admin</span>' : 'User'}</td>
+                    <td>${u.is_active ? '<span class="badge-success">Active</span>' : '<span class="badge-error">Disabled</span>'}</td>
+                    <td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '-'}</td>
+                    <td><button class="btn secondary edit-user-btn" style="padding:5px 10px;font-size:12px;">Edit</button></td>
+                </tr>
+            `).join('');
+            document.getElementById('userList').innerHTML = `
+                <h3>Users (${data.length})</h3>
+                <table class="table">
+                    <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="6" class="muted">No users</td></tr>'}</tbody>
+                </table>
+            `;
+            
+            // Attach edit handlers
+            document.querySelectorAll('.edit-user-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const row = e.target.closest('tr');
+                    const user = JSON.parse(row.dataset.user);
+                    document.getElementById('editUserId').value = user.id;
+                    document.getElementById('editEmail').value = user.email || '';
+                    document.getElementById('editPass').value = '';
+                    document.getElementById('editRole').value = user.is_superuser ? 'true' : 'false';
+                    document.getElementById('editStatus').value = user.is_active ? 'true' : 'false';
+                    document.getElementById('editUserPanel').style.display = 'block';
+                    document.getElementById('editMsg').textContent = `Editing: ${user.username}`;
+                });
+            });
+        } catch (err) {
+            document.getElementById('userList').innerHTML = `<h3>Users</h3><div class="muted badge-error">${err.message}</div>`;
+        }
+    }
+
+    async function renderEvaluation() {
+        content.innerHTML = `<div class="grid">
+            <div class="panel" id="datasetPanel"><h3>Datasets</h3><div class="muted">Loading...</div></div>
+            <div class="panel" id="runPanel"><h3>Runs</h3><div class="muted">Loading...</div></div>
+            <div class="panel">
+                <h3>Generate Dataset</h3>
+                <div class="form-grid">
+                    <div><label>Name</label><input id="dsName" placeholder="Daily sample" /></div>
+                    <div><label>Client Id (optional)</label><input id="dsClient" placeholder="client-123" /></div>
+                    <div><label>Sample Size</label><input id="dsSize" type="number" min="1" max="500" placeholder="50" /></div>
+                </div>
+                <div style="margin-top:10px;"><button class="btn" id="genBtn">Generate</button><span id="genMsg" class="muted" style="margin-left:8px;"></span></div>
+            </div>
+            <div class="panel">
+                <h3>Run Evaluation</h3>
+                <div class="form-grid">
+                    <div><label>Dataset Id</label><input id="runDataset" type="number" /></div>
+                    <div><label>k</label><input id="runK" type="number" value="5" min="1" max="20" /></div>
+                </div>
+                <div style="margin-top:10px;"><button class="btn" id="runBtn">Run</button><span id="runMsg" class="muted" style="margin-left:8px;"></span></div>
+            </div>
+        </div>`;
+
+        document.getElementById('genBtn').addEventListener('click', async () => {
+            const name = document.getElementById('dsName').value.trim();
+            const client_id = document.getElementById('dsClient').value.trim() || null;
+            const sample_size = parseInt(document.getElementById('dsSize').value, 10) || null;
+            const msg = document.getElementById('genMsg');
+            msg.textContent = '...';
+            try {
+                const res = await fetch(`${API_BASE}/evaluation/datasets`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ name, client_id, sample_size }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+                msg.textContent = 'Dataset created';
+                renderEvaluation();
+            } catch (err) {
+                msg.textContent = err.message;
+            }
+        });
+
+        document.getElementById('runBtn').addEventListener('click', async () => {
+            const dataset_id = parseInt(document.getElementById('runDataset').value, 10);
+            const k = parseInt(document.getElementById('runK').value, 10) || 5;
+            const msg = document.getElementById('runMsg');
+            msg.textContent = '...';
+            try {
+                const res = await fetch(`${API_BASE}/evaluation/runs`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ dataset_id, k }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+                msg.textContent = 'Run completed';
+                renderEvaluation();
+            } catch (err) {
+                msg.textContent = err.message;
+            }
+        });
+
+        try {
+            const dsRes = await fetch(`${API_BASE}/evaluation/datasets`, { headers: getHeaders() });
+            const datasets = dsRes.ok ? await dsRes.json() : [];
+            const dsRows = datasets.map(d => `
+                <tr>
+                    <td>${d.id}</td><td>${d.name}</td><td>${d.client_id || '-'}</td><td>${d.sample_size}</td><td>${d.qa_pairs_count}</td><td>${d.run_count || 0}</td>
+                </tr>
+            `).join('');
+            document.getElementById('datasetPanel').innerHTML = `
+                <h3>Datasets</h3>
+                <table class="table">
+                    <thead><tr><th>ID</th><th>Name</th><th>Client</th><th>Sample</th><th>Q&A</th><th>Runs</th></tr></thead>
+                    <tbody>${dsRows || '<tr><td colspan="6" class="muted">No datasets</td></tr>'}</tbody>
+                </table>
+            `;
+        } catch (err) {
+            document.getElementById('datasetPanel').innerHTML = `<h3>Datasets</h3><div class="muted badge-error">${err.message}</div>`;
+        }
+
+        try {
+            const runRes = await fetch(`${API_BASE}/evaluation/runs`, { headers: getHeaders() });
+            const runs = runRes.ok ? await runRes.json() : [];
+            const runRows = runs.map(r => {
+                const m = r.metrics || {};
+                return `
+                <tr>
+                    <td>${r.id}</td>
+                    <td>${r.dataset_name || r.dataset_id}</td>
+                    <td><span class="chip">${r.status || 'completed'}</span></td>
+                    <td>${m.mean_precision_at_k?.toFixed?.(3) || '-'}</td>
+                    <td>${m.mean_recall_at_k?.toFixed?.(3) || '-'}</td>
+                    <td>${m.mean_mrr?.toFixed?.(3) || '-'}</td>
+                    <td>${m.hit_rate?.toFixed?.(3) || '-'}</td>
+                    <td>${r.created_at ? new Date(r.created_at).toLocaleString() : ''}</td>
+                </tr>
+            `}).join('');
+            document.getElementById('runPanel').innerHTML = `
+                <h3>Evaluation Runs (${runs.length})</h3>
+                <table class="table">
+                    <thead><tr><th>ID</th><th>Dataset</th><th>Status</th><th>Precision@k</th><th>Recall@k</th><th>MRR</th><th>Hit Rate</th><th>Created</th></tr></thead>
+                    <tbody>${runRows || '<tr><td colspan="8" class="muted">No runs yet</td></tr>'}</tbody>
+                </table>
+            `;
+        } catch (err) {
+            document.getElementById('runPanel').innerHTML = `<h3>Runs</h3><div class="muted badge-error">${err.message}</div>`;
+        }
+    }
+
+    async function renderStats() {
+        content.innerHTML = `<div class="grid">
+            <div class="panel" id="statPanel"><h3>Key Stats</h3><div class="muted">Loading...</div></div>
+            <div class="panel" id="configPanel"><h3>Config</h3><div class="muted">Loading...</div></div>
+        </div>`;
+        try {
+            const res = await fetch(`${API_BASE}/admin/stats`, { headers: getHeaders() });
+            const data = res.ok ? await res.json() : {};
+            document.getElementById('statPanel').innerHTML = `
+                <h3>Key Stats</h3>
+                <div class="stat-grid">
+                    <div class="stat"><div class="label">Users</div><div class="value">${data.total_users ?? '-'}</div></div>
+                    <div class="stat"><div class="label">Active Users</div><div class="value">${data.active_users ?? '-'}</div></div>
+                    <div class="stat"><div class="label">Admins</div><div class="value">${data.superusers ?? '-'}</div></div>
+                    <div class="stat"><div class="label">Requests 24h</div><div class="value">${data.total_requests_24h ?? '-'}</div></div>
+                    <div class="stat"><div class="label">Error Rate</div><div class="value">${data.error_rate_24h ?? '-'}%</div></div>
+                    <div class="stat"><div class="label">Avg Latency</div><div class="value">${data.avg_response_time_ms ?? '-'} ms</div></div>
+                </div>
+            `;
+        } catch (err) {
+            document.getElementById('statPanel').innerHTML = `<h3>Key Stats</h3><div class="muted badge-error">${err.message}</div>`;
+        }
+
+        try {
+            const res = await fetch(`${API_BASE}/admin/config`, { headers: getHeaders() });
+            const cfg = res.ok ? await res.json() : {};
+            const entries = Object.entries(cfg).map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+            document.getElementById('configPanel').innerHTML = `
+                <h3>Config</h3>
+                <table class="table">
+                    <tbody>${entries || '<tr><td class="muted">No config</td></tr>'}</tbody>
+                </table>
+            `;
+        } catch (err) {
+            document.getElementById('configPanel').innerHTML = `<h3>Config</h3><div class="muted badge-error">${err.message}</div>`;
+        }
+    }
+
+    if (authToken) {
+        bootstrap();
+    } else {
+        authView.classList.remove('hidden');
+    }
+</script>
+</body>
+</html>

@@ -104,14 +104,13 @@ class ClientExtractor:
         
         try:
             llm = get_lmstudio_client()
-            response = await llm.chat_completion(
+            # Use chat method which returns content directly
+            content = await llm.chat(
                 messages=[{"role": "user", "content": prompt}],
+                stream=False,
                 temperature=0.1,
                 max_tokens=100,
             )
-            
-            # Parse JSON response
-            content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
             
             # Extract JSON from response
             json_match = re.search(r'\{[^}]+\}', content)
@@ -153,13 +152,14 @@ class ClientExtractor:
         
         try:
             llm = get_lmstudio_client()
-            response = await llm.chat_completion(
+            # Use chat method which returns content directly
+            content = await llm.chat(
                 messages=[{"role": "user", "content": prompt}],
+                stream=False,
                 temperature=0.1,
                 max_tokens=100,
             )
             
-            content = response.get("choices", [{}])[0].get("message", {}).get("content", "")
             json_match = re.search(r'\{[^}]+\}', content)
             
             if json_match:

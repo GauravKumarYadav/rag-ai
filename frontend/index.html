@@ -1798,7 +1798,9 @@
                 });
 
                 if (response.ok) {
-                    const conversations = await response.json();
+                    const data = await response.json();
+                    // API returns {conversations: [...]}
+                    const conversations = data.conversations || data || [];
                     renderConversations(conversations);
                 } else if (response.status === 401) {
                     logout();
@@ -1808,7 +1810,9 @@
             }
         }
 
-        function renderConversations(conversations) {
+        function renderConversations(conversationsList) {
+            // Ensure we have an array
+            const conversations = Array.isArray(conversationsList) ? conversationsList : [];
             conversationList.innerHTML = '';
             
             if (conversations.length === 0) {

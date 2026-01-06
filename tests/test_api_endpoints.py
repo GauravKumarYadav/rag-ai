@@ -12,7 +12,12 @@ def client():
 def test_root_endpoint(client):
     response = client.get("/")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    # Root now returns HTML (index.html) or JSON status depending on frontend availability
+    content_type = response.headers.get("content-type", "")
+    if "text/html" in content_type:
+        assert "<!DOCTYPE html>" in response.text or "<html" in response.text
+    else:
+        assert response.json() == {"status": "ok"}
 
 
 def test_documents_stats(client):
