@@ -1,11 +1,20 @@
 # RAG AI Microservices Architecture
 # ================================
 # This docker-compose file runs the complete microservices stack:
-# - Ollama (LLM + Embeddings)
+#
+# LLM PROVIDERS (configurable via LLM_PROVIDER env var):
+# - LM Studio: Fast local inference on host GPU (default: LLM_PROVIDER=lmstudio)
+# - Ollama: Containerized inference, good for CPU or when LM Studio unavailable
+#
+# EMBEDDING PROVIDERS (configurable via EMBEDDING_PROVIDER env var):
+# - Ollama: Uses nomic-embed-text model (default: EMBEDDING_PROVIDER=ollama)
+# - LM Studio: Uses text-embedding-nomic-embed-text-v1.5 or similar
+#
+# SERVICES:
 # - Redis (Queue, Cache, Sessions)
 # - MySQL (Audit, Users, Evaluation)
 # - ChromaDB (Vector Store)
-# - Embedding Service
+# - Embedding Service (multi-provider)
 # - Document API
 # - Document Worker (scalable)
 # - Evaluation Worker
@@ -20,7 +29,9 @@ services:
   # INFRASTRUCTURE SERVICES
   # ============================================================
   
-  # Ollama - Local LLM server (replaces LMStudio)
+  # Ollama - Containerized LLM server
+  # Used for: Embeddings (default), Chat (when LLM_PROVIDER=ollama)
+  # Alternative to LM Studio running on host machine
   ollama:
     image: ollama/ollama:latest
     container_name: rag-ollama
@@ -98,7 +109,9 @@ services:
   # MICROSERVICES
   # ============================================================
 
-  # Embedding Service - Dedicated embedding generation
+  # Embedding Service - Dedicated embedding generation (multi-provider)
+  # Supports: ollama (default) or lmstudio
+  # Set EMBEDDING_PROVIDER in .env to switch
   embedding-service:
     build:
       context: ./services/embedding-service
@@ -107,7 +120,15 @@ services:
     ports:
       - "8010:8000"
     environment:
+      # Provider selection: "ollama" or "lmstudio"
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-ollama}
+      # Ollama settings (when EMBEDDING_PROVIDER=ollama)
       - OLLAMA_URL=http://ollama:11434
+      # LM Studio settings (when EMBEDDING_PROVIDER=lmstudio)
+      - LMSTUDIO_URL=${LMSTUDIO_BASE_URL:-http://host.containers.internal:1234/v1}
+      # Model name (use provider-appropriate model)
+      # Ollama: nomic-embed-text
+      # LM Studio: text-embedding-nomic-embed-text-v1.5
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
       - REDIS_URL=redis://redis:6379
       - CACHE_TTL=86400
@@ -189,7 +210,7 @@ services:
       - CHROMADB_URL=http://chromadb:8000
       - EMBEDDING_SERVICE_URL=http://embedding-service:8000
       - OLLAMA_URL=http://ollama:11434
-      - CHAT_MODEL=${CHAT_MODEL:-llama3.2:1b}
+      - CHAT_MODEL=${CHAT_MODEL:-deepseek-r1:1.5b}
       - CRON_SCHEDULE=${EVAL_CRON_SCHEDULE:-0 2 * * *}
       - CRON_TIMEZONE=UTC
       - RUN_ON_STARTUP=false
@@ -217,15 +238,26 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # LLM Configuration - Use Ollama
-      - LLM__PROVIDER=ollama
-      - LLM__OLLAMA__BASE_URL=http://ollama:11434
-      - LLM__OLLAMA__MODEL=${CHAT_MODEL:-llama3.2:1b}
+      # LLM Configuration - Supports: lmstudio, ollama, openai, custom
+      # Set LLM_PROVIDER in .env to switch between providers
+      - LLM__PROVIDER=${LLM_PROVIDER:-ollama}
+      # LM Studio settings (runs on host, use host.docker.internal to access from container)
+      - LLM__LMSTUDIO__BASE_URL=${LMSTUDIO_BASE_URL:-http://host.containers.internal:1234/v1}
+      - LLM__LMSTUDIO__MODEL=${LMSTUDIO_MODEL:-local-model}
+      # Ollama settings (containerized)
+      - LLM__OLLAMA__BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - LLM__OLLAMA__MODEL=${CHAT_MODEL:-llama3.2:3b}
+      # OpenAI settings
+      - LLM__OPENAI__BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - LLM__OPENAI__MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - LLM__OPENAI__API_KEY=${OPENAI_API_KEY:-}
+      # Common LLM settings
       - LLM__TEMPERATURE=${LLM_TEMPERATURE:-0.25}
       - LLM__MAX_TOKENS=${LLM_MAX_TOKENS:-1024}
+      - LLM__TIMEOUT=${LLM_TIMEOUT:-180.0}
       # RAG Configuration - Use ChromaDB server
       - RAG__PROVIDER=chromadb
-      - RAG__CHROMA_URL=http://chromadb:8000
+      - RAG__URL=http://chromadb:8000
       - RAG__EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
       # Use embedding service instead of direct Ollama
       - EMBEDDING_SERVICE_URL=http://embedding-service:8000

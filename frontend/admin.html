@@ -110,7 +110,8 @@
 </div>
 
 <script>
-    const API_BASE = window.location.origin.replace(/:\d+$/, ':8000');
+    // Use same origin for API calls (nginx proxies to backend)
+    const API_BASE = window.location.origin;
     const tabs = [
         { id: 'audit', label: 'Audit Logs', icon: 'fa-list-check' },
         { id: 'users', label: 'Users', icon: 'fa-user-shield' },

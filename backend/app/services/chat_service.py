@@ -102,8 +102,12 @@ class ChatService:
     ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
         history = self.session_buffer.get(request.conversation_id)
         
-        # Detect client from the message
-        client_id = await self._detect_client(request.message, request.conversation_id)
+        # Use explicit client_id from request, or detect from message
+        client_id = request.client_id
+        print(f"[DEBUG] Chat request - client_id from request: {client_id}")
+        if not client_id:
+            client_id = await self._detect_client(request.message, request.conversation_id)
+            print(f"[DEBUG] Detected client_id: {client_id}")
         
         # Retrieve from global and client-specific sources
         retrieved = []
@@ -112,16 +116,20 @@ class ChatService:
             retrieved = self.retriever.search(
                 query=request.message, top_k=request.top_k, metadata_filters=request.metadata_filters
             )
+            print(f"[DEBUG] Global retrieval: {len(retrieved)} docs")
             
             # Client-specific retrieval
             if client_id:
                 # Search only the specific client's documents
                 client_store = get_client_vector_store(client_id)
+                print(f"[DEBUG] Client store docs count: {client_store.docs.count()}")
                 client_hits = client_store.query(
                     query=request.message, top_k=request.top_k, collection="documents"
                 )
+                print(f"[DEBUG] Client retrieval: {len(client_hits)} docs")
                 # Prepend client-specific results (they're more relevant for this client)
                 retrieved = client_hits + retrieved
+                print(f"[DEBUG] Total retrieved: {len(retrieved)} docs")
             else:
                 # No specific client detected - search ALL client documents
                 # This ensures we find relevant context even without explicit client mention

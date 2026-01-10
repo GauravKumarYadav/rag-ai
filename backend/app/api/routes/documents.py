@@ -309,6 +309,7 @@ async def list_documents(
 @router.delete("/{document_id:path}", summary="Delete a document")
 async def delete_document(
     document_id: str,
+    client_id: Optional[str] = None,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Delete a document and all its chunks from the vector store.
@@ -317,53 +318,79 @@ async def delete_document(
     - The actual chunk ID from the vector store
     - The filename of the document
     - The full source path of the document
+    
+    If client_id is provided, searches that client's store.
+    Otherwise, searches global store and all client stores.
     """
     from urllib.parse import unquote
     document_id = unquote(document_id)  # Handle URL-encoded filenames
     
-    store = get_vector_store()
-    try:
-        # Get all chunks
-        all_docs = store.docs.get(include=["metadatas"])
-        
-        ids_to_delete = []
-        source_to_delete = None
-        
-        # First, try to find by exact ID match
-        for i, doc_id in enumerate(all_docs.get("ids", [])):
-            if doc_id == document_id:
-                metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
-                source_to_delete = metadata.get("source", "")
-                break
-        
-        # If not found by ID, try to find by filename or source path
-        if not source_to_delete:
-            for i, doc_id in enumerate(all_docs.get("ids", [])):
-                metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
-                source = metadata.get("source", "")
-                filename = os.path.basename(source) if source else ""
-                
-                # Match by filename or full source path
-                if filename == document_id or source == document_id or source.endswith(document_id):
-                    source_to_delete = source
+    def find_and_delete_in_store(store, doc_id: str) -> int:
+        """Find and delete document from a store. Returns number of deleted chunks."""
+        try:
+            all_docs = store.docs.get(include=["metadatas"])
+            
+            ids_to_delete = []
+            source_to_delete = None
+            
+            # First, try to find by exact ID match
+            for i, chunk_id in enumerate(all_docs.get("ids", [])):
+                if chunk_id == doc_id:
+                    metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
+                    source_to_delete = metadata.get("source", "")
                     break
+            
+            # If not found by ID, try to find by filename or source path
+            if not source_to_delete:
+                for i, chunk_id in enumerate(all_docs.get("ids", [])):
+                    metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
+                    source = metadata.get("source", "")
+                    filename = os.path.basename(source) if source else ""
+                    
+                    # Match by filename or full source path
+                    if filename == doc_id or source == doc_id or source.endswith(doc_id):
+                        source_to_delete = source
+                        break
+            
+            # Now delete all chunks with the matching source
+            if source_to_delete:
+                for i, chunk_id in enumerate(all_docs.get("ids", [])):
+                    metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
+                    if metadata.get("source") == source_to_delete:
+                        ids_to_delete.append(chunk_id)
+            
+            if ids_to_delete:
+                store.docs.delete(ids=ids_to_delete)
+                return len(ids_to_delete)
+            return 0
+        except Exception:
+            return 0
+    
+    total_deleted = 0
+    
+    # If client_id specified, only search that client's store
+    if client_id:
+        store = get_client_vector_store(client_id)
+        total_deleted = find_and_delete_in_store(store, document_id)
+    else:
+        # Try global store first
+        store = get_vector_store()
+        total_deleted = find_and_delete_in_store(store, document_id)
         
-        # Now delete all chunks with the matching source
-        if source_to_delete:
-            for i, doc_id in enumerate(all_docs.get("ids", [])):
-                metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
-                if metadata.get("source") == source_to_delete:
-                    ids_to_delete.append(doc_id)
-        
-        if ids_to_delete:
-            store.docs.delete(ids=ids_to_delete)
-            return {"message": f"Deleted {len(ids_to_delete)} chunks", "deleted_count": len(ids_to_delete)}
-        else:
-            raise HTTPException(status_code=404, detail=f"Document '{document_id}' not found")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
+        # If not found in global, search all client stores
+        if total_deleted == 0:
+            client_store = get_client_store()
+            for client in client_store.list_all():
+                client_vs = get_client_vector_store(client.id)
+                deleted = find_and_delete_in_store(client_vs, document_id)
+                if deleted > 0:
+                    total_deleted = deleted
+                    break  # Found and deleted
+    
+    if total_deleted > 0:
+        return {"message": f"Deleted {total_deleted} chunks", "deleted_count": total_deleted}
+    else:
+        raise HTTPException(status_code=404, detail=f"Document '{document_id}' not found")
 
 
 @router.delete("/clear", summary="Clear all documents")

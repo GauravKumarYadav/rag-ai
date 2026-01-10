@@ -36,6 +36,7 @@ class ChatRequest(BaseModel):
     include_sources: bool = True
     metadata_filters: Optional[Dict[str, Any]] = None
     system_prompt: Optional[str] = None
+    client_id: Optional[str] = None  # Explicit client ID for document retrieval
 
 
 class ChatResponse(BaseModel):

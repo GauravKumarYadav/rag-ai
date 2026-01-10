@@ -18,7 +18,7 @@ from app.core.logging import get_logger
 from app.db.mysql import get_db_pool
 
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter()
 logger = get_logger(__name__)
 
 

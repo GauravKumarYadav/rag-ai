@@ -55,6 +55,7 @@ async def chat(
             include_sources=body.get("include_sources", True),
             metadata_filters=body.get("metadata_filters"),
             system_prompt=body.get("system_prompt"),
+            client_id=body.get("client_id"),
         )
     else:
         # Handle form-data request
@@ -91,6 +92,7 @@ async def chat(
             include_sources=str(form.get("include_sources", "true")).lower() == "true",
             metadata_filters=metadata_filters,
             system_prompt=form.get("system_prompt"),
+            client_id=form.get("client_id"),
         )
     
     result, sources = await service.handle_chat(chat_request, background_tasks)

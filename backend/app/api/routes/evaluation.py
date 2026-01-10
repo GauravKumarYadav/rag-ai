@@ -23,7 +23,7 @@ from app.evaluation.runner import (
 )
 
 
-router = APIRouter(prefix="/evaluation", tags=["evaluation"])
+router = APIRouter()
 logger = get_logger(__name__)
 
 

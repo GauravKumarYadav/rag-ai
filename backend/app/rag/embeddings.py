@@ -12,6 +12,7 @@ from functools import lru_cache
 from typing import List, Optional
 
 import httpx
+import numpy as np
 from chromadb import EmbeddingFunction, Documents, Embeddings
 
 from app.config import settings
@@ -37,7 +38,7 @@ class LMStudioEmbeddingFunction(EmbeddingFunction[Documents]):
         """ChromaDB calls embedding functions with __call__."""
         return self.embed_documents(input)
     
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(self, texts: List[str]) -> List[np.ndarray]:
         """Embed a list of documents."""
         if not texts:
             return []
@@ -56,13 +57,13 @@ class LMStudioEmbeddingFunction(EmbeddingFunction[Documents]):
             
             # Sort by index to ensure correct order
             embeddings = sorted(data["data"], key=lambda x: x["index"])
-            return [item["embedding"] for item in embeddings]
+            return [np.array(item["embedding"], dtype=np.float32) for item in embeddings]
         except Exception as e:
             print(f"Embedding error for texts: {texts[:100] if texts else texts}, error: {e}")
             raise
     
-    def embed_query(self, input) -> Embeddings:
-        """Embed query texts. ChromaDB expects List[List[float]] for queries."""
+    def embed_query(self, input) -> List[np.ndarray]:
+        """Embed query texts. ChromaDB expects List[np.ndarray] for queries."""
         # ChromaDB passes a list of query texts
         if isinstance(input, str):
             input = [input]
@@ -87,7 +88,7 @@ class OllamaEmbeddingFunction(EmbeddingFunction[Documents]):
     def __call__(self, input: Documents) -> Embeddings:
         return self.embed_documents(input)
     
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(self, texts: List[str]) -> List[np.ndarray]:
         """Embed a list of documents using Ollama."""
         if not texts:
             return []
@@ -104,14 +105,14 @@ class OllamaEmbeddingFunction(EmbeddingFunction[Documents]):
                 )
                 response.raise_for_status()
                 data = response.json()
-                embeddings.append(data.get("embedding", []))
+                embeddings.append(np.array(data.get("embedding", []), dtype=np.float32))
             except Exception as e:
                 print(f"Ollama embedding error: {e}")
                 raise
         
         return embeddings
     
-    def embed_query(self, input) -> Embeddings:
+    def embed_query(self, input) -> List[np.ndarray]:
         if isinstance(input, str):
             input = [input]
         return self.embed_documents(input)
@@ -135,7 +136,7 @@ class EmbeddingServiceFunction(EmbeddingFunction[Documents]):
     def __call__(self, input: Documents) -> Embeddings:
         return self.embed_documents(input)
     
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(self, texts: List[str]) -> List[np.ndarray]:
         """Embed documents via embedding service."""
         if not texts:
             return []
@@ -154,12 +155,13 @@ class EmbeddingServiceFunction(EmbeddingFunction[Documents]):
             )
             response.raise_for_status()
             data = response.json()
-            return data.get("embeddings", [])
+            embeddings = data.get("embeddings", [])
+            return [np.array(emb, dtype=np.float32) for emb in embeddings]
         except Exception as e:
             print(f"Embedding service error: {e}")
             raise
     
-    def embed_query(self, input) -> Embeddings:
+    def embed_query(self, input) -> List[np.ndarray]:
         if isinstance(input, str):
             input = [input]
         return self.embed_documents(input)

@@ -817,6 +817,38 @@
             margin-top: 0.25rem;
         }
 
+        .upload-options {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+            text-align: left;
+        }
+
+        .upload-options .option-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-options .option-label:last-child {
+            margin-bottom: 0;
+        }
+
+        .upload-options input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        .upload-options .option-label:hover {
+            color: var(--text-primary);
+        }
+
         .document-list {
             display: flex;
             flex-direction: column;
@@ -1358,7 +1390,20 @@
                 <i class="fas fa-cloud-upload-alt" id="uploadIcon"></i>
                 <p id="uploadText">Drag & drop files here</p>
                 <div class="hint" id="uploadHint">or click to browse</div>
-                <input type="file" id="fileInput" hidden multiple accept=".pdf,.txt,.md,.doc,.docx">
+                <input type="file" id="fileInput" hidden multiple accept=".pdf,.txt,.md,.doc,.docx,.png,.jpg,.jpeg">
+                
+                <!-- PDF Processing Options -->
+                <div class="upload-options" id="uploadOptions">
+                    <label class="option-label">
+                        <input type="checkbox" id="useOcrCheckbox" checked>
+                        <span>Enable OCR (for scanned/image-based PDFs)</span>
+                    </label>
+                    <label class="option-label">
+                        <input type="checkbox" id="fastModeCheckbox">
+                        <span>Fast mode (skip table detection)</span>
+                    </label>
+                </div>
+                
                 <div class="upload-progress hidden" id="uploadProgress">
                     <div class="progress-bar-container">
                         <div class="progress-bar" id="progressBar" style="width: 0%"></div>
@@ -1406,7 +1451,8 @@
         // ============================================================
         // Configuration
         // ============================================================
-        const API_BASE = 'http://localhost:8000';
+        // Use same origin for API calls (nginx proxies to backend)
+        const API_BASE = window.location.origin;
         const WS_BASE = 'ws://localhost:8000';
         
         // ============================================================
@@ -2011,12 +2057,20 @@
             const totalFiles = files.length;
             let uploadedCount = 0;
             
+            // Get OCR settings from checkboxes
+            const useOcr = document.getElementById('useOcrCheckbox')?.checked ?? true;
+            const fastMode = document.getElementById('fastModeCheckbox')?.checked ?? false;
+            
             for (const file of files) {
                 uploadedCount++;
                 showUploadProgress(uploadedCount, totalFiles, file.name);
                 
                 const formData = new FormData();
                 formData.append('files', file);
+                
+                // Add OCR settings
+                formData.append('use_ocr', useOcr);
+                formData.append('fast_mode', fastMode);
                 
                 // Add client info if selected
                 if (currentClientId) {
