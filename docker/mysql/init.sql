@@ -94,3 +94,19 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
     INDEX idx_status (status),
     INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- Client Management Tables
+-- ============================================================
+
+-- Clients table - stores client entities for document organization
+CREATE TABLE IF NOT EXISTS clients (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    aliases JSON,
+    metadata JSON,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_name (name),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

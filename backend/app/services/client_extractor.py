@@ -47,9 +47,9 @@ class ClientExtractor:
     def __init__(self):
         self.client_store = get_client_store()
     
-    def _get_client_list_str(self) -> str:
+    async def _get_client_list_str(self) -> str:
         """Get formatted list of known clients."""
-        clients = self.client_store.list_all()
+        clients = await self.client_store.list_all()
         if not clients:
             return "No clients registered yet."
         
@@ -59,11 +59,12 @@ class ClientExtractor:
             lines.append(f"- ID: {c.id}, Name: {c.name}{aliases}")
         return "\n".join(lines)
     
-    def _try_direct_match(self, message: str) -> Optional[Client]:
+    async def _try_direct_match(self, message: str) -> Optional[Client]:
         """Try to match client name directly without LLM."""
         message_lower = message.lower()
         
-        for client in self.client_store.list_all():
+        clients = await self.client_store.list_all()
+        for client in clients:
             # Check exact name match
             if client.name.lower() in message_lower:
                 return client
@@ -87,18 +88,19 @@ class ClientExtractor:
             Tuple of (Client or None, confidence score, extracted_name)
         """
         # First try direct matching (fast path)
-        direct_match = self._try_direct_match(message)
+        direct_match = await self._try_direct_match(message)
         if direct_match:
             return direct_match, 1.0, direct_match.name
         
         # If no clients exist, can't extract
-        clients = self.client_store.list_all()
+        clients = await self.client_store.list_all()
         if not clients:
             return None, 0.0, None
         
         # Use LLM for fuzzy matching
+        client_list_str = await self._get_client_list_str()
         prompt = EXTRACTION_PROMPT.format(
-            client_list=self._get_client_list_str(),
+            client_list=client_list_str,
             message=message,
         )
         
@@ -121,7 +123,7 @@ class ClientExtractor:
                 extracted_name = data.get("extracted_name")
                 
                 if client_id not in ("none", "context_needed", None):
-                    client = self.client_store.get(client_id)
+                    client = await self.client_store.get(client_id)
                     if client:
                         return client, confidence, extracted_name
                 
@@ -145,9 +147,10 @@ class ClientExtractor:
             for msg in conversation_history[-10:]  # Last 10 messages
         ])
         
+        client_list_str = await self._get_client_list_str()
         prompt = CONTEXT_EXTRACTION_PROMPT.format(
             conversation=conv_text,
-            client_list=self._get_client_list_str(),
+            client_list=client_list_str,
         )
         
         try:
@@ -168,7 +171,7 @@ class ClientExtractor:
                 confidence = float(data.get("confidence", 0.0))
                 
                 if client_id != "none":
-                    client = self.client_store.get(client_id)
+                    client = await self.client_store.get(client_id)
                     if client:
                         return client, confidence, client.name
         
@@ -177,10 +180,10 @@ class ClientExtractor:
         
         return None, 0.0, None
     
-    def create_client_from_name(self, name: str) -> Client:
+    async def create_client_from_name(self, name: str) -> Client:
         """Create a new client with the given name."""
         from app.models.client import ClientCreate
-        return self.client_store.create(ClientCreate(name=name))
+        return await self.client_store.create(ClientCreate(name=name))
 
     async def extract_client(self, message: str, conversation_history: Optional[List[dict]] = None) -> Optional[dict]:
         """

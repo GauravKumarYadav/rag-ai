@@ -1,8 +1,9 @@
 """MySQL database connection and audit logging utilities."""
 
+import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import aiomysql
 
@@ -44,7 +45,7 @@ async def close_db_pool() -> None:
 
 
 async def init_audit_tables() -> None:
-    """Initialize the audit_logs and users tables if they don't exist."""
+    """Initialize the audit_logs, users, and clients tables if they don't exist."""
     pool = await get_db_pool()
     
     create_audit_logs_table = """
@@ -85,11 +86,25 @@ async def init_audit_tables() -> None:
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     """
     
+    create_clients_table = """
+    CREATE TABLE IF NOT EXISTS clients (
+        id VARCHAR(36) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        aliases JSON,
+        metadata JSON,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_name (name),
+        INDEX idx_created_at (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    """
+    
     async with pool.acquire() as conn:
         async with conn.cursor() as cursor:
             await cursor.execute(create_audit_logs_table)
             await cursor.execute(create_users_table)
-            logger.info("Audit tables initialized successfully")
+            await cursor.execute(create_clients_table)
+            logger.info("Database tables initialized successfully (audit_logs, users, clients)")
 
 
 async def log_audit_event(
@@ -188,3 +203,223 @@ async def create_user(
     except Exception as e:
         logger.error(f"Failed to create user: {e}")
         return False
+
+
+# ============================================================
+# Client Management Functions
+# ============================================================
+
+async def init_clients_table() -> None:
+    """Initialize the clients table if it doesn't exist."""
+    pool = await get_db_pool()
+    
+    create_clients_table = """
+    CREATE TABLE IF NOT EXISTS clients (
+        id VARCHAR(36) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        aliases JSON,
+        metadata JSON,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_name (name),
+        INDEX idx_created_at (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    """
+    
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(create_clients_table)
+            logger.info("Clients table initialized successfully")
+
+
+async def create_client_db(
+    client_id: str,
+    name: str,
+    aliases: List[str] = None,
+    metadata: Dict[str, Any] = None,
+) -> Optional[Dict[str, Any]]:
+    """Create a new client in the database."""
+    try:
+        pool = await get_db_pool()
+        
+        insert_query = """
+        INSERT INTO clients (id, name, aliases, metadata)
+        VALUES (%s, %s, %s, %s)
+        """
+        
+        aliases_json = json.dumps(aliases or [])
+        metadata_json = json.dumps(metadata or {})
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(
+                    insert_query,
+                    (client_id, name, aliases_json, metadata_json),
+                )
+                logger.info(f"Client created: {name} (ID: {client_id})")
+        
+        # Return the created client
+        return await get_client_db(client_id)
+    except Exception as e:
+        logger.error(f"Failed to create client: {e}")
+        return None
+
+
+async def get_client_db(client_id: str) -> Optional[Dict[str, Any]]:
+    """Get a client by ID."""
+    try:
+        pool = await get_db_pool()
+        
+        query = """
+        SELECT id, name, aliases, metadata, created_at, updated_at
+        FROM clients
+        WHERE id = %s
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                await cursor.execute(query, (client_id,))
+                result = await cursor.fetchone()
+                if result:
+                    # Parse JSON fields
+                    result['aliases'] = json.loads(result['aliases']) if result['aliases'] else []
+                    result['metadata'] = json.loads(result['metadata']) if result['metadata'] else {}
+                return result
+    except Exception as e:
+        logger.error(f"Failed to get client: {e}")
+        return None
+
+
+async def get_client_by_name_db(name: str) -> Optional[Dict[str, Any]]:
+    """Get a client by exact name match."""
+    try:
+        pool = await get_db_pool()
+        
+        query = """
+        SELECT id, name, aliases, metadata, created_at, updated_at
+        FROM clients
+        WHERE LOWER(name) = LOWER(%s)
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                await cursor.execute(query, (name,))
+                result = await cursor.fetchone()
+                if result:
+                    result['aliases'] = json.loads(result['aliases']) if result['aliases'] else []
+                    result['metadata'] = json.loads(result['metadata']) if result['metadata'] else {}
+                return result
+    except Exception as e:
+        logger.error(f"Failed to get client by name: {e}")
+        return None
+
+
+async def list_clients_db() -> List[Dict[str, Any]]:
+    """List all clients."""
+    try:
+        pool = await get_db_pool()
+        
+        query = """
+        SELECT id, name, aliases, metadata, created_at, updated_at
+        FROM clients
+        ORDER BY name
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                await cursor.execute(query)
+                results = await cursor.fetchall()
+                for result in results:
+                    result['aliases'] = json.loads(result['aliases']) if result['aliases'] else []
+                    result['metadata'] = json.loads(result['metadata']) if result['metadata'] else {}
+                return results
+    except Exception as e:
+        logger.error(f"Failed to list clients: {e}")
+        return []
+
+
+async def update_client_db(
+    client_id: str,
+    name: Optional[str] = None,
+    aliases: Optional[List[str]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Update a client's information."""
+    try:
+        pool = await get_db_pool()
+        
+        # Build dynamic update query
+        updates = []
+        params = []
+        
+        if name is not None:
+            updates.append("name = %s")
+            params.append(name)
+        if aliases is not None:
+            updates.append("aliases = %s")
+            params.append(json.dumps(aliases))
+        if metadata is not None:
+            updates.append("metadata = %s")
+            params.append(json.dumps(metadata))
+        
+        if not updates:
+            return await get_client_db(client_id)
+        
+        params.append(client_id)
+        query = f"UPDATE clients SET {', '.join(updates)} WHERE id = %s"
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(query, tuple(params))
+                if cursor.rowcount == 0:
+                    return None
+                logger.info(f"Client updated: {client_id}")
+        
+        return await get_client_db(client_id)
+    except Exception as e:
+        logger.error(f"Failed to update client: {e}")
+        return None
+
+
+async def delete_client_db(client_id: str) -> bool:
+    """Delete a client by ID."""
+    try:
+        pool = await get_db_pool()
+        
+        query = "DELETE FROM clients WHERE id = %s"
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(query, (client_id,))
+                if cursor.rowcount > 0:
+                    logger.info(f"Client deleted: {client_id}")
+                    return True
+                return False
+    except Exception as e:
+        logger.error(f"Failed to delete client: {e}")
+        return False
+
+
+async def search_clients_db(query: str) -> List[Dict[str, Any]]:
+    """Search clients by name substring."""
+    try:
+        pool = await get_db_pool()
+        
+        search_query = """
+        SELECT id, name, aliases, metadata, created_at, updated_at
+        FROM clients
+        WHERE LOWER(name) LIKE LOWER(%s)
+        ORDER BY name
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                await cursor.execute(search_query, (f"%{query}%",))
+                results = await cursor.fetchall()
+                for result in results:
+                    result['aliases'] = json.loads(result['aliases']) if result['aliases'] else []
+                    result['metadata'] = json.loads(result['metadata']) if result['metadata'] else {}
+                return results
+    except Exception as e:
+        logger.error(f"Failed to search clients: {e}")
+        return []

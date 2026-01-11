@@ -1,3 +1,4 @@
+import re
 from typing import AsyncGenerator, List, Optional, Tuple
 
 from fastapi import BackgroundTasks
@@ -5,12 +6,60 @@ from fastapi import BackgroundTasks
 from app.clients.lmstudio import LMStudioClient, get_lmstudio_client
 from app.memory.long_term import LongTermMemory, get_long_term_memory
 from app.memory.session_buffer import SessionBuffer, get_session_buffer
-from app.models.client import ClientStore
+from app.models.client import ClientStore, get_client_store
 from app.models.schemas import ChatRequest, RetrievalHit
 from app.rag.retriever import Retriever, get_retriever
 from app.rag.vector_store import get_client_vector_store
 from app.services.client_extractor import ClientExtractor, get_client_extractor
 from app.services.prompt_builder import build_messages
+
+
+# Patterns for messages that likely DON'T need document retrieval
+CHITCHAT_PATTERNS = [
+    r"^(hi|hello|hey|howdy|greetings|yo)[\s!?.]*$",
+    r"^(how are you|how's it going|what's up|sup)[\s!?.]*$",
+    r"^(good morning|good afternoon|good evening|good night)[\s!?.]*$",
+    r"^(thanks|thank you|thx|ty)[\s!?.]*$",
+    r"^(bye|goodbye|see you|later|cya)[\s!?.]*$",
+    r"^(yes|no|ok|okay|sure|alright|fine|great|cool)[\s!?.]*$",
+    r"^(help|what can you do|who are you)[\s!?.]*$",
+]
+
+# Keywords that suggest document/client context is needed
+CONTEXT_KEYWORDS = [
+    "document", "file", "client", "show", "tell me about", "what is",
+    "find", "search", "look up", "information", "details", "data",
+    "analyze", "summary", "summarize", "explain", "list", "get",
+    "aadhar", "aadhaar", "card", "pdf", "report", "record",
+]
+
+
+def _needs_rag_retrieval(message: str) -> bool:
+    """
+    Determine if a message likely needs RAG document retrieval.
+    
+    Returns False for simple chitchat/greetings that don't need document context.
+    Returns True for questions that might benefit from document retrieval.
+    """
+    msg_lower = message.lower().strip()
+    
+    # Check if it's simple chitchat (no RAG needed)
+    for pattern in CHITCHAT_PATTERNS:
+        if re.match(pattern, msg_lower, re.IGNORECASE):
+            return False
+    
+    # Check if it contains context keywords (RAG needed)
+    for keyword in CONTEXT_KEYWORDS:
+        if keyword in msg_lower:
+            return True
+    
+    # For longer messages or questions, assume RAG might be useful
+    # Short messages without keywords are likely chitchat
+    if len(msg_lower) < 20 and "?" not in msg_lower:
+        return False
+    
+    # Default: assume RAG is needed for questions and longer messages
+    return True
 
 
 class ChatService:
@@ -28,11 +77,11 @@ class ChatService:
         self.session_buffer = session_buffer
         self.long_term = long_term
         self.client_extractor = client_extractor or get_client_extractor()
-        self.client_store = client_store or ClientStore()
+        self.client_store = client_store or get_client_store()
 
-    def _build_system_context(self) -> str:
+    async def _build_system_context(self) -> str:
         """Build context about the system's clients and documents for the LLM."""
-        clients = self.client_store.list_all()
+        clients = await self.client_store.list_all()
         
         if not clients:
             return "\n\n[System Info: No clients registered. No documents available.]"
@@ -85,13 +134,13 @@ class ChatService:
         
         # Try to find by ID first
         if client_id:
-            client = self.client_store.get(client_id)
+            client = await self.client_store.get(client_id)
             if client:
                 return client.id
         
         # Search by name
         if client_name:
-            matches = self.client_store.search(client_name)
+            matches = await self.client_store.search(client_name)
             if matches:
                 return matches[0].id
         
@@ -102,16 +151,22 @@ class ChatService:
     ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
         history = self.session_buffer.get(request.conversation_id)
         
-        # Use explicit client_id from request, or detect from message
+        # Check if message needs RAG retrieval (skip for simple greetings/chitchat)
+        needs_rag = _needs_rag_retrieval(request.message)
+        print(f"[DEBUG] Message needs RAG: {needs_rag}")
+        
+        # Use explicit client_id from request, or detect from message (only if RAG needed)
         client_id = request.client_id
         print(f"[DEBUG] Chat request - client_id from request: {client_id}")
-        if not client_id:
+        if not client_id and needs_rag:
             client_id = await self._detect_client(request.message, request.conversation_id)
             print(f"[DEBUG] Detected client_id: {client_id}")
         
-        # Retrieve from global and client-specific sources
+        # Retrieve from global and client-specific sources (only if RAG needed)
         retrieved = []
-        if request.top_k > 0:
+        memory_hits = []
+        
+        if needs_rag and request.top_k > 0:
             # Global retrieval
             retrieved = self.retriever.search(
                 query=request.message, top_k=request.top_k, metadata_filters=request.metadata_filters
@@ -133,7 +188,7 @@ class ChatService:
             else:
                 # No specific client detected - search ALL client documents
                 # This ensures we find relevant context even without explicit client mention
-                all_clients = self.client_store.list_all()
+                all_clients = await self.client_store.list_all()
                 all_client_hits = []
                 for client in all_clients:
                     client_store = get_client_vector_store(client.id)
@@ -150,18 +205,21 @@ class ChatService:
                 if all_client_hits:
                     all_client_hits.sort(key=lambda x: x.score)
                     retrieved = all_client_hits[:request.top_k] + retrieved
+            
+            # Also retrieve memories when RAG is needed
+            memory_hits = self.long_term.retrieve(query=request.message)
         
-        memory_hits = self.long_term.retrieve(query=request.message)
-        
-        # Build context: system info + current client context
-        system_context = self._build_system_context()
+        # Build context only if RAG was used
+        system_context = ""
         client_context = ""
-        if client_id:
-            client = self.client_store.get(client_id)
-            if client:
-                client_context = f"\n\n[Current client context: {client.name}]"
+        if needs_rag:
+            system_context = await self._build_system_context()
+            if client_id:
+                client = await self.client_store.get(client_id)
+                if client:
+                    client_context = f"\n\n[Current client context: {client.name}]"
         
-        # Include system context so LLM knows about available clients and documents
+        # Include system context only when relevant
         system_prompt = (request.system_prompt or "") + system_context + client_context
         
         # Get provider type for correct message formatting (ollama vs openai)
@@ -236,6 +294,5 @@ def get_chat_service() -> ChatService:
         session_buffer=get_session_buffer(),
         long_term=get_long_term_memory(),
         client_extractor=get_client_extractor(),
-        client_store=ClientStore(),
+        client_store=get_client_store(),
     )
-

@@ -377,6 +377,37 @@
             background: rgba(239, 68, 68, 0.1);
         }
 
+        .user-profile-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex: 1;
+            text-decoration: none;
+            color: inherit;
+            border-radius: var(--radius-sm);
+            padding: 0.25rem;
+            transition: var(--transition);
+        }
+
+        .user-profile-link:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .profile-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: var(--radius-sm);
+            transition: var(--transition);
+        }
+
+        .profile-btn:hover {
+            color: var(--primary);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
         /* Main Content */
         .main-content {
             flex: 1;
@@ -1278,11 +1309,16 @@
             </div>
             <div class="sidebar-footer">
                 <div class="user-menu">
-                    <div class="user-avatar" id="userAvatar">A</div>
-                    <div class="user-info">
-                        <div class="name" id="userName">Admin</div>
-                        <div class="status">Online</div>
-                    </div>
+                    <a href="/profile" class="user-profile-link" title="View Profile & Settings">
+                        <div class="user-avatar" id="userAvatar">A</div>
+                        <div class="user-info">
+                            <div class="name" id="userName">Admin</div>
+                            <div class="status">Online</div>
+                        </div>
+                    </a>
+                    <button class="profile-btn" id="profileBtn" title="Profile & Settings" onclick="window.location.href='/profile'">
+                        <i class="fas fa-cog"></i>
+                    </button>
                     <button class="logout-btn" id="logoutBtn" title="Sign out">
                         <i class="fas fa-sign-out-alt"></i>
                     </button>
@@ -1674,7 +1710,7 @@
         function connectWebSocket() {
             if (!authToken || !currentConversationId) return;
 
-            const wsUrl = `${WS_BASE}/ws/chat/${currentConversationId}?token=${authToken}`;
+            const wsUrl = `${WS_BASE}/chat/ws/${currentConversationId}?token=${authToken}`;
             websocket = new WebSocket(wsUrl);
 
             websocket.onopen = () => {
@@ -1714,14 +1750,19 @@
         }
 
         function handleWebSocketMessage(data) {
-            if (data.type === 'stream') {
+            // Handle backend message types: 'chunk', 'done', 'error', 'pong'
+            if (data.type === 'chunk' || data.type === 'stream') {
                 appendToLastMessage(data.content);
-            } else if (data.type === 'complete') {
+            } else if (data.type === 'done' || data.type === 'complete') {
                 hideTypingIndicator();
+                sendBtn.disabled = false;
                 loadConversations();
             } else if (data.type === 'error') {
                 hideTypingIndicator();
-                showToast(data.message || 'An error occurred', 'error');
+                sendBtn.disabled = false;
+                showToast(data.detail || data.message || 'An error occurred', 'error');
+            } else if (data.type === 'pong') {
+                // Heartbeat response, ignore
             }
         }
 
@@ -1741,7 +1782,12 @@
 
             // Create conversation if needed
             if (!currentConversationId) {
-                await createConversation();
+                try {
+                    await createConversation();
+                } catch (error) {
+                    sendBtn.disabled = false;
+                    return; // Don't continue if conversation creation failed
+                }
             }
 
             // Add user message to UI
@@ -1750,7 +1796,12 @@
 
             // Send via WebSocket or REST
             if (websocket && websocket.readyState === WebSocket.OPEN) {
-                websocket.send(JSON.stringify({ type: 'message', content: message }));
+                // Backend expects: { type: 'chat', message: '...', conversation_id: '...' }
+                websocket.send(JSON.stringify({ 
+                    type: 'chat', 
+                    message: message,
+                    conversation_id: currentConversationId
+                }));
             } else {
                 await sendMessageREST(message);
             }
@@ -1758,30 +1809,39 @@
 
         async function sendMessageREST(message) {
             try {
+                // Build request body - only include conversation_id if not null
+                const requestBody = {
+                    message: message,
+                    stream: false
+                };
+                if (currentConversationId) {
+                    requestBody.conversation_id = currentConversationId;
+                }
+                
                 const response = await fetch(`${API_BASE}/chat`, {
                     method: 'POST',
                     headers: getAuthHeaders(),
-                    body: JSON.stringify({
-                        conversation_id: currentConversationId,
-                        message: message,
-                        stream: false
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 if (response.ok) {
                     const data = await response.json();
                     hideTypingIndicator();
+                    sendBtn.disabled = false;
                     addMessage('assistant', data.response);
                     loadConversations();
                 } else if (response.status === 401) {
+                    sendBtn.disabled = false;
                     logout();
                 } else {
                     hideTypingIndicator();
+                    sendBtn.disabled = false;
                     const error = await response.json().catch(() => ({}));
                     showToast(error.detail || 'Failed to send message', 'error');
                 }
             } catch (error) {
                 hideTypingIndicator();
+                sendBtn.disabled = false;
                 console.error('Chat error:', error);
                 showToast('Connection error', 'error');
             }
@@ -1909,9 +1969,13 @@
                     loadConversations();
                 } else if (response.status === 401) {
                     logout();
+                    throw new Error('Unauthorized');
+                } else {
+                    throw new Error('Failed to create conversation');
                 }
             } catch (error) {
                 showToast('Failed to create conversation', 'error');
+                throw error; // Re-throw so sendMessage knows it failed
             }
         }
 

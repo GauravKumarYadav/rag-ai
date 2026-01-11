@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
+    <title>Profile & Settings</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -38,6 +38,8 @@
         button.btn:hover { background: var(--primary-hover); }
         button.btn.secondary { background: #233045; color: #d7e3f4; border: 1px solid var(--border); }
         button.btn.secondary:hover { border-color: var(--primary); }
+        .btn-link { background: transparent; color: var(--muted); border: none; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px; transition: 0.15s; }
+        .btn-link:hover { color: var(--primary); }
 
         .grid { display: grid; gap: 16px; padding: 18px 22px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
         .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; min-height: 200px; }
@@ -63,6 +65,14 @@
         .login-card h2 { margin-bottom: 10px; }
         .login-card .muted { margin-bottom: 16px; display: block; }
 
+        .profile-card { display: flex; align-items: center; gap: 20px; padding: 20px; }
+        .profile-avatar { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), #8b5cf6); display: grid; place-items: center; font-size: 32px; font-weight: 700; color: white; box-shadow: var(--shadow); }
+        .profile-info { flex: 1; }
+        .profile-info h2 { font-size: 24px; margin-bottom: 4px; }
+        .profile-info .role-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+        .role-badge.admin { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .role-badge.user { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3); }
+
         .hidden { display: none; }
         .badge-success { color: #34d399; }
         .badge-error { color: var(--error); }
@@ -71,10 +81,10 @@
 <body>
 <div id="authView" class="login-card hidden">
     <div class="brand" style="margin-bottom: 12px;">
-        <div class="brand-badge">A</div>
+        <div class="brand-badge">P</div>
         <div>
-            <div>Admin Console</div>
-            <div class="muted">Authenticate to manage the system</div>
+            <div>Profile & Settings</div>
+            <div class="muted">Sign in to access your profile</div>
         </div>
     </div>
     <div class="form-grid">
@@ -96,11 +106,14 @@
 <div id="app" class="app hidden">
     <header>
         <div class="brand">
-            <div class="brand-badge">A</div>
-            <div>Admin Dashboard</div>
+            <div class="brand-badge">P</div>
+            <div>Profile & Settings</div>
         </div>
         <nav id="tabs"></nav>
         <div class="actions">
+            <button class="btn-link" onclick="window.location.href='/'">
+                <i class="fa fa-comments"></i> Back to Chat
+            </button>
             <div id="userBadge" class="pill">-</div>
             <button class="btn secondary" id="logoutBtn">Logout</button>
         </div>
@@ -112,15 +125,24 @@
 <script>
     // Use same origin for API calls (nginx proxies to backend)
     const API_BASE = window.location.origin;
-    const tabs = [
-        { id: 'audit', label: 'Audit Logs', icon: 'fa-list-check' },
-        { id: 'users', label: 'Users', icon: 'fa-user-shield' },
-        { id: 'evaluation', label: 'Evaluation', icon: 'fa-vial' },
-        { id: 'stats', label: 'Stats', icon: 'fa-chart-line' },
+    const allTabs = [
+        { id: 'profile', label: 'Profile', icon: 'fa-user', adminOnly: false },
+        { id: 'clients', label: 'Clients', icon: 'fa-building', adminOnly: false },
+        { id: 'audit', label: 'Audit Logs', icon: 'fa-list-check', adminOnly: true },
+        { id: 'users', label: 'Users', icon: 'fa-user-shield', adminOnly: true },
+        { id: 'evaluation', label: 'Evaluation', icon: 'fa-vial', adminOnly: true },
+        { id: 'stats', label: 'Stats', icon: 'fa-chart-line', adminOnly: true },
     ];
+    
+    function getVisibleTabs() {
+        if (currentUserInfo && currentUserInfo.is_superuser) {
+            return allTabs;
+        }
+        return allTabs.filter(t => !t.adminOnly);
+    }
 
     let authToken = localStorage.getItem('auth_token');
-    let currentTab = 'audit';
+    let currentTab = 'profile'; // Default to profile
 
     const authView = document.getElementById('authView');
     const appView = document.getElementById('app');
@@ -131,7 +153,16 @@
     const content = document.getElementById('content');
     const tabsContainer = document.getElementById('tabs');
 
-    tabsContainer.innerHTML = tabs.map(t => `<button class="tab" data-id="${t.id}"><i class="fa ${t.icon}"></i> ${t.label}</button>`).join('');
+    function rebuildTabs() {
+        const visibleTabs = getVisibleTabs();
+        tabsContainer.innerHTML = visibleTabs.map(t => `<button class="tab" data-id="${t.id}"><i class="fa ${t.icon}"></i> ${t.label}</button>`).join('');
+        
+        // If current tab is not visible, switch to first available tab
+        if (!visibleTabs.find(t => t.id === currentTab)) {
+            currentTab = visibleTabs[0]?.id || 'profile';
+        }
+    }
+    
     tabsContainer.addEventListener('click', (e) => {
         const btn = e.target.closest('button.tab');
         if (!btn) return;
@@ -178,12 +209,23 @@
         return { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` };
     }
 
+    let currentUserInfo = null;
+    
     async function bootstrap() {
         try {
             const me = await fetch(`${API_BASE}/auth/me`, { headers: getHeaders() });
             if (!me.ok) throw new Error('Auth failed');
             const user = await me.json();
+            currentUserInfo = user;
             userBadge.textContent = user.username || 'user';
+            userBadge.title = user.is_superuser ? 'Admin' : 'Regular User';
+            if (user.is_superuser) {
+                userBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+                userBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+            } else {
+                userBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+                userBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+            }
             authView.classList.add('hidden');
             appView.classList.remove('hidden');
             renderTabs();
@@ -197,20 +239,189 @@
     }
 
     function renderTabs() {
+        rebuildTabs();
         Array.from(tabsContainer.querySelectorAll('.tab')).forEach(btn => {
             btn.classList.toggle('active', btn.dataset.id === currentTab);
         });
     }
+    
+    function renderAdminWarning() {
+        return '';
+    }
+    
+    function renderUserInfo() {
+        if (currentUserInfo && !currentUserInfo.is_superuser) {
+            return `<div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; font-size: 13px;">
+                <i class="fa fa-info-circle" style="color: var(--primary);"></i>
+                <span>Logged in as <strong>${currentUserInfo.username}</strong>. You can manage clients from this page.</span>
+            </div>`;
+        }
+        return '';
+    }
 
     async function loadTab() {
+        if (currentTab === 'profile') return renderProfile();
         if (currentTab === 'audit') return renderAudit();
         if (currentTab === 'users') return renderUsers();
+        if (currentTab === 'clients') return renderClients();
         if (currentTab === 'evaluation') return renderEvaluation();
         if (currentTab === 'stats') return renderStats();
     }
 
+    // ============================================================
+    // PROFILE TAB
+    // ============================================================
+    async function renderProfile() {
+        const user = currentUserInfo;
+        const initials = user.username ? user.username.substring(0, 2).toUpperCase() : 'U';
+        const roleClass = user.is_superuser ? 'admin' : 'user';
+        const roleText = user.is_superuser ? 'Administrator' : 'User';
+        
+        content.innerHTML = `
+            <div class="grid">
+                <div class="panel" style="grid-column: 1 / -1;">
+                    <div class="profile-card">
+                        <div class="profile-avatar">${initials}</div>
+                        <div class="profile-info">
+                            <h2>${user.username}</h2>
+                            <div class="muted" style="margin-bottom: 8px;">${user.email || 'No email set'}</div>
+                            <span class="role-badge ${roleClass}">
+                                <i class="fa ${user.is_superuser ? 'fa-shield-halved' : 'fa-user'}"></i>
+                                ${roleText}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="panel">
+                    <h3><i class="fa fa-info-circle" style="margin-right: 8px;"></i>Account Details</h3>
+                    <table class="table">
+                        <tbody>
+                            <tr><td class="muted" style="width: 140px;">User ID</td><td><code style="background: #162033; padding: 4px 8px; border-radius: 6px; font-size: 12px;">${user.id}</code></td></tr>
+                            <tr><td class="muted">Username</td><td>${user.username}</td></tr>
+                            <tr><td class="muted">Email</td><td>${user.email || '<span class="muted">Not set</span>'}</td></tr>
+                            <tr><td class="muted">Role</td><td><span class="chip">${roleText}</span></td></tr>
+                            <tr><td class="muted">Status</td><td><span class="${user.is_active !== false ? 'badge-success' : 'badge-error'}">${user.is_active !== false ? 'Active' : 'Inactive'}</span></td></tr>
+                            <tr><td class="muted">Created</td><td>${user.created_at ? new Date(user.created_at).toLocaleString() : '-'}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="panel">
+                    <h3><i class="fa fa-key" style="margin-right: 8px;"></i>Change Password</h3>
+                    <div class="form-grid" style="grid-template-columns: 1fr;">
+                        <div>
+                            <label>Current Password</label>
+                            <input id="currentPass" type="password" placeholder="Enter current password">
+                        </div>
+                        <div>
+                            <label>New Password</label>
+                            <input id="newPass" type="password" placeholder="Enter new password">
+                        </div>
+                        <div>
+                            <label>Confirm New Password</label>
+                            <input id="confirmPass" type="password" placeholder="Confirm new password">
+                        </div>
+                    </div>
+                    <div style="margin-top: 12px;">
+                        <button class="btn" id="changePassBtn">Update Password</button>
+                        <span id="passMsg" class="muted" style="margin-left: 10px;"></span>
+                    </div>
+                </div>
+                
+                <div class="panel">
+                    <h3><i class="fa fa-sliders" style="margin-right: 8px;"></i>Quick Actions</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">
+                        <button class="btn secondary" onclick="window.location.href='/'">
+                            <i class="fa fa-comments"></i> Go to Chat
+                        </button>
+                        ${user.is_superuser ? `
+                        <button class="btn secondary" onclick="currentTab='users'; renderTabs(); loadTab();">
+                            <i class="fa fa-user-shield"></i> Manage Users
+                        </button>
+                        <button class="btn secondary" onclick="currentTab='stats'; renderTabs(); loadTab();">
+                            <i class="fa fa-chart-line"></i> View Stats
+                        </button>
+                        ` : ''}
+                        <button class="btn secondary" onclick="currentTab='clients'; renderTabs(); loadTab();">
+                            <i class="fa fa-building"></i> Manage Clients
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Password change handler
+        document.getElementById('changePassBtn').addEventListener('click', async () => {
+            const currentPass = document.getElementById('currentPass').value;
+            const newPass = document.getElementById('newPass').value;
+            const confirmPass = document.getElementById('confirmPass').value;
+            const msg = document.getElementById('passMsg');
+            
+            if (!currentPass || !newPass) {
+                msg.textContent = 'Please fill in all fields';
+                msg.className = 'muted badge-error';
+                return;
+            }
+            
+            if (newPass !== confirmPass) {
+                msg.textContent = 'New passwords do not match';
+                msg.className = 'muted badge-error';
+                return;
+            }
+            
+            if (newPass.length < 6) {
+                msg.textContent = 'Password must be at least 6 characters';
+                msg.className = 'muted badge-error';
+                return;
+            }
+            
+            msg.textContent = 'Updating...';
+            msg.className = 'muted';
+            
+            try {
+                // First verify current password by trying to login
+                const loginRes = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUserInfo.username, password: currentPass }),
+                });
+                
+                if (!loginRes.ok) {
+                    msg.textContent = 'Current password is incorrect';
+                    msg.className = 'muted badge-error';
+                    return;
+                }
+                
+                // Update password via admin endpoint (for self) or dedicated endpoint
+                const res = await fetch(`${API_BASE}/auth/change-password`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ current_password: currentPass, new_password: newPass }),
+                });
+                
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || 'Failed to update password');
+                }
+                
+                msg.textContent = 'Password updated successfully!';
+                msg.className = 'muted badge-success';
+                document.getElementById('currentPass').value = '';
+                document.getElementById('newPass').value = '';
+                document.getElementById('confirmPass').value = '';
+            } catch (err) {
+                msg.textContent = err.message;
+                msg.className = 'muted badge-error';
+            }
+        });
+    }
+
+    // ============================================================
+    // AUDIT TAB
+    // ============================================================
     async function renderAudit() {
-        content.innerHTML = `<div class="grid" style="grid-template-columns: 1fr;">
+        content.innerHTML = `${renderAdminWarning()}<div class="grid" style="grid-template-columns: 1fr;">
             <div class="panel">
                 <h3>Audit Log Filters</h3>
                 <div class="form-grid" style="grid-template-columns: repeat(5, 1fr);">
@@ -224,7 +435,6 @@
             <div class="panel" id="auditPanel"><h3>Recent Audit Logs</h3><div class="muted">Loading...</div></div>
         </div>`;
         
-        // Load action filter options
         try {
             const actRes = await fetch(`${API_BASE}/admin/audit-logs/actions`, { headers: getHeaders() });
             if (actRes.ok) {
@@ -276,8 +486,11 @@
         }
     }
 
+    // ============================================================
+    // USERS TAB
+    // ============================================================
     async function renderUsers() {
-        content.innerHTML = `<div class="grid">
+        content.innerHTML = `${renderAdminWarning()}<div class="grid">
             <div class="panel" id="userList"><h3>Users</h3><div class="muted">Loading...</div></div>
             <div class="panel">
                 <h3>Create User</h3>
@@ -386,7 +599,6 @@
                 </table>
             `;
             
-            // Attach edit handlers
             document.querySelectorAll('.edit-user-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const row = e.target.closest('tr');
@@ -405,8 +617,102 @@
         }
     }
 
+    // ============================================================
+    // CLIENTS TAB
+    // ============================================================
+    async function renderClients() {
+        content.innerHTML = `${renderUserInfo()}<div class="grid">
+            <div class="panel" id="clientList"><h3>Clients</h3><div class="muted">Loading...</div></div>
+            <div class="panel">
+                <h3>Create Client</h3>
+                <div class="form-grid">
+                    <div><label>Name</label><input id="newClientName" placeholder="Acme Corp" /></div>
+                    <div><label>Aliases (comma-separated)</label><input id="newClientAliases" placeholder="acme, acme-corp" /></div>
+                </div>
+                <div style="margin-top:10px;"><button class="btn" id="createClientBtn">Create</button><span id="clientMsg" class="muted" style="margin-left:8px;"></span></div>
+            </div>
+        </div>`;
+
+        document.getElementById('createClientBtn').addEventListener('click', async () => {
+            const name = document.getElementById('newClientName').value.trim();
+            const aliasesStr = document.getElementById('newClientAliases').value.trim();
+            const aliases = aliasesStr ? aliasesStr.split(',').map(a => a.trim()).filter(a => a) : [];
+            const msg = document.getElementById('clientMsg');
+            msg.textContent = '...';
+            try {
+                const res = await fetch(`${API_BASE}/clients`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ name, aliases, metadata: {} }),
+                });
+                if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+                msg.textContent = 'Client created';
+                document.getElementById('newClientName').value = '';
+                document.getElementById('newClientAliases').value = '';
+                loadClientList();
+            } catch (err) {
+                msg.textContent = err.message;
+            }
+        });
+
+        loadClientList();
+    }
+
+    async function loadClientList() {
+        try {
+            const res = await fetch(`${API_BASE}/clients`, { headers: getHeaders() });
+            if (!res.ok) throw new Error('Failed to load clients');
+            const data = await res.json();
+            const clients = data.clients || [];
+            const rows = clients.map(c => `
+                <tr>
+                    <td title="${c.id}">${c.id.substring(0, 8)}...</td>
+                    <td><strong>${c.name}</strong></td>
+                    <td>${c.aliases?.join(', ') || '-'}</td>
+                    <td>${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
+                    <td>
+                        <button class="btn secondary delete-client-btn" data-id="${c.id}" data-name="${c.name}" style="padding:5px 10px;font-size:12px;color:#ef4444;">
+                            <i class="fa fa-trash"></i> Delete
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+            document.getElementById('clientList').innerHTML = `
+                <h3>Clients (${clients.length})</h3>
+                <table class="table">
+                    <thead><tr><th>ID</th><th>Name</th><th>Aliases</th><th>Created</th><th>Actions</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="5" class="muted">No clients</td></tr>'}</tbody>
+                </table>
+            `;
+            
+            document.querySelectorAll('.delete-client-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const clientId = btn.dataset.id;
+                    const clientName = btn.dataset.name;
+                    if (!confirm(`Delete client "${clientName}"?\n\nThis will NOT delete their documents. To also delete documents, use delete_documents=true parameter.`)) return;
+                    
+                    try {
+                        const res = await fetch(`${API_BASE}/clients/${clientId}?delete_documents=false`, {
+                            method: 'DELETE',
+                            headers: getHeaders(),
+                        });
+                        if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+                        loadClientList();
+                    } catch (err) {
+                        alert('Delete failed: ' + err.message);
+                    }
+                });
+            });
+        } catch (err) {
+            document.getElementById('clientList').innerHTML = `<h3>Clients</h3><div class="muted badge-error">${err.message}</div>`;
+        }
+    }
+
+    // ============================================================
+    // EVALUATION TAB
+    // ============================================================
     async function renderEvaluation() {
-        content.innerHTML = `<div class="grid">
+        content.innerHTML = `${renderAdminWarning()}<div class="grid">
             <div class="panel" id="datasetPanel"><h3>Datasets</h3><div class="muted">Loading...</div></div>
             <div class="panel" id="runPanel"><h3>Runs</h3><div class="muted">Loading...</div></div>
             <div class="panel">
@@ -515,8 +821,11 @@
         }
     }
 
+    // ============================================================
+    // STATS TAB
+    // ============================================================
     async function renderStats() {
-        content.innerHTML = `<div class="grid">
+        content.innerHTML = `${renderAdminWarning()}<div class="grid">
             <div class="panel" id="statPanel"><h3>Key Stats</h3><div class="muted">Loading...</div></div>
             <div class="panel" id="configPanel"><h3>Config</h3><div class="muted">Loading...</div></div>
         </div>`;

@@ -150,12 +150,12 @@ async def upload_documents(
         # Create new client with this name
         client_store = get_client_store()
         # Check if client with this name exists
-        existing = client_store.get_by_name(client_name)
+        existing = await client_store.get_by_name(client_name)
         if existing:
             actual_client_id = existing.id
         else:
             from app.models.client import ClientCreate
-            new_client = client_store.create(ClientCreate(name=client_name))
+            new_client = await client_store.create(ClientCreate(name=client_name))
             actual_client_id = new_client.id
     
     # Get appropriate vector store
@@ -380,7 +380,8 @@ async def delete_document(
         # If not found in global, search all client stores
         if total_deleted == 0:
             client_store = get_client_store()
-            for client in client_store.list_all():
+            all_clients = await client_store.list_all()
+            for client in all_clients:
                 client_vs = get_client_vector_store(client.id)
                 deleted = find_and_delete_in_store(client_vs, document_id)
                 if deleted > 0:

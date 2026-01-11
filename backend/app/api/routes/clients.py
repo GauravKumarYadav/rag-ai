@@ -50,14 +50,14 @@ async def create_client(
     store = get_client_store()
     
     # Check if client with same name exists
-    existing = store.get_by_name(data.name, fuzzy=False)
+    existing = await store.get_by_name(data.name, fuzzy=False)
     if existing:
         raise HTTPException(
             status_code=400,
             detail=f"Client with name '{data.name}' already exists (ID: {existing.id})",
         )
     
-    client = store.create(data)
+    client = await store.create(data)
     return ClientResponse(
         id=client.id,
         name=client.name,
@@ -77,9 +77,9 @@ async def list_clients(
     store = get_client_store()
     
     if search:
-        clients = store.search(search)
+        clients = await store.search(search)
     else:
-        clients = store.list_all()
+        clients = await store.list_all()
     
     return ClientListResponse(
         clients=[
@@ -104,7 +104,7 @@ async def get_client(
 ):
     """Get a specific client by ID."""
     store = get_client_store()
-    client = store.get(client_id)
+    client = await store.get(client_id)
     
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -127,7 +127,7 @@ async def update_client(
 ):
     """Update a client's information."""
     store = get_client_store()
-    client = store.update(client_id, data)
+    client = await store.update(client_id, data)
     
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -154,7 +154,7 @@ async def delete_client(
     If delete_documents=True, also deletes all documents associated with the client.
     """
     store = get_client_store()
-    client = store.get(client_id)
+    client = await store.get(client_id)
     
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -165,7 +165,7 @@ async def delete_client(
         client_store.delete_all()
         clear_client_vector_store_cache(client_id)
     
-    store.delete(client_id)
+    await store.delete(client_id)
     
     return {"message": f"Client '{client.name}' deleted", "documents_deleted": delete_documents}
 
@@ -177,7 +177,7 @@ async def get_client_stats(
 ):
     """Get document and memory statistics for a client."""
     client_store = get_client_store()
-    client = client_store.get(client_id)
+    client = await client_store.get(client_id)
     
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -201,7 +201,7 @@ async def find_client_by_name(
 ):
     """Find a client by name (exact or fuzzy match)."""
     store = get_client_store()
-    client = store.get_by_name(name, fuzzy=fuzzy)
+    client = await store.get_by_name(name, fuzzy=fuzzy)
     
     if not client:
         raise HTTPException(status_code=404, detail=f"No client found matching '{name}'")

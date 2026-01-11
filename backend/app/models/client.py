@@ -1,13 +1,19 @@
-"""Client management models."""
+"""Client management models with MySQL persistence."""
 from datetime import datetime
+from difflib import SequenceMatcher
 from typing import Optional, List
 from pydantic import BaseModel, Field
 import uuid
-import json
-import os
-from pathlib import Path
 
-from app.config import settings
+from app.db.mysql import (
+    create_client_db,
+    get_client_db,
+    get_client_by_name_db,
+    list_clients_db,
+    update_client_db,
+    delete_client_db,
+    search_clients_db,
+)
 
 
 class Client(BaseModel):
@@ -31,7 +37,6 @@ class Client(BaseModel):
     
     def fuzzy_matches(self, query: str, threshold: float = 0.8) -> bool:
         """Check if query fuzzy-matches client name or aliases."""
-        from difflib import SequenceMatcher
         query_lower = query.lower().strip()
         
         # Check main name
@@ -62,124 +67,121 @@ class ClientUpdate(BaseModel):
     metadata: Optional[dict] = None
 
 
-class ClientStore:
+def _dict_to_client(data: dict) -> Client:
+    """Convert a database dict to a Client model."""
+    return Client(
+        id=data['id'],
+        name=data['name'],
+        aliases=data.get('aliases', []),
+        metadata=data.get('metadata', {}),
+        created_at=data.get('created_at', datetime.utcnow()),
+        updated_at=data.get('updated_at', datetime.utcnow()),
+    )
+
+
+class MySQLClientStore:
     """
-    Simple file-based client storage.
-    In production, use a proper database.
+    MySQL-backed client storage.
+    Persists client data across container recreations.
     """
     
-    def __init__(self, storage_path: Optional[str] = None):
-        self.storage_path = Path(storage_path or settings.chroma_db_path) / "clients.json"
-        self._clients: dict[str, Client] = {}
-        self._load()
-    
-    def _load(self) -> None:
-        """Load clients from disk."""
-        if self.storage_path.exists():
-            try:
-                with open(self.storage_path, "r") as f:
-                    data = json.load(f)
-                    for client_data in data.get("clients", []):
-                        client = Client(**client_data)
-                        self._clients[client.id] = client
-            except Exception as e:
-                print(f"Warning: Could not load clients: {e}")
-    
-    def _save(self) -> None:
-        """Save clients to disk."""
-        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.storage_path, "w") as f:
-            json.dump({
-                "clients": [c.model_dump(mode="json") for c in self._clients.values()]
-            }, f, indent=2, default=str)
-    
-    def create(self, data: ClientCreate) -> Client:
+    async def create(self, data: ClientCreate) -> Client:
         """Create a new client."""
-        client = Client(
+        client_id = str(uuid.uuid4())
+        result = await create_client_db(
+            client_id=client_id,
             name=data.name,
             aliases=data.aliases,
             metadata=data.metadata,
         )
-        self._clients[client.id] = client
-        self._save()
-        return client
+        if result:
+            return _dict_to_client(result)
+        raise ValueError(f"Failed to create client: {data.name}")
     
-    def get(self, client_id: str) -> Optional[Client]:
+    async def get(self, client_id: str) -> Optional[Client]:
         """Get client by ID."""
-        return self._clients.get(client_id)
+        result = await get_client_db(client_id)
+        if result:
+            return _dict_to_client(result)
+        return None
     
-    def get_by_name(self, name: str, fuzzy: bool = True) -> Optional[Client]:
+    async def get_by_name(self, name: str, fuzzy: bool = True) -> Optional[Client]:
         """Get client by name (exact or fuzzy match)."""
         # First try exact match
-        for client in self._clients.values():
+        result = await get_client_by_name_db(name)
+        if result:
+            return _dict_to_client(result)
+        
+        # Check aliases with exact match
+        all_clients = await list_clients_db()
+        for client_data in all_clients:
+            client = _dict_to_client(client_data)
             if client.matches_name(name):
                 return client
         
-        # Then try fuzzy match
+        # Then try fuzzy match if enabled
         if fuzzy:
-            for client in self._clients.values():
+            for client_data in all_clients:
+                client = _dict_to_client(client_data)
                 if client.fuzzy_matches(name):
                     return client
         
         return None
     
-    def list_all(self) -> List[Client]:
+    async def list_all(self) -> List[Client]:
         """List all clients."""
-        return list(self._clients.values())
+        results = await list_clients_db()
+        return [_dict_to_client(r) for r in results]
     
-    def update(self, client_id: str, data: ClientUpdate) -> Optional[Client]:
+    async def update(self, client_id: str, data: ClientUpdate) -> Optional[Client]:
         """Update a client."""
-        client = self._clients.get(client_id)
-        if not client:
-            return None
-        
-        if data.name is not None:
-            client.name = data.name
-        if data.aliases is not None:
-            client.aliases = data.aliases
-        if data.metadata is not None:
-            client.metadata = data.metadata
-        client.updated_at = datetime.utcnow()
-        
-        self._clients[client_id] = client
-        self._save()
-        return client
+        result = await update_client_db(
+            client_id=client_id,
+            name=data.name,
+            aliases=data.aliases,
+            metadata=data.metadata,
+        )
+        if result:
+            return _dict_to_client(result)
+        return None
     
-    def delete(self, client_id: str) -> bool:
+    async def delete(self, client_id: str) -> bool:
         """Delete a client."""
-        if client_id in self._clients:
-            del self._clients[client_id]
-            self._save()
-            return True
-        return False
+        return await delete_client_db(client_id)
     
-    def search(self, query: str) -> List[Client]:
+    async def search(self, query: str) -> List[Client]:
         """Search clients by name/alias."""
-        results = []
+        # Search by name in database
+        results = await search_clients_db(query)
+        clients = [_dict_to_client(r) for r in results]
+        
+        # Also check aliases (not stored in DB search)
+        all_clients = await list_clients_db()
         query_lower = query.lower().strip()
         
-        for client in self._clients.values():
-            # Check if query is substring of name
-            if query_lower in client.name.lower():
-                results.append(client)
+        found_ids = {c.id for c in clients}
+        for client_data in all_clients:
+            if client_data['id'] in found_ids:
                 continue
-            
-            # Check aliases
-            for alias in client.aliases:
+            for alias in client_data.get('aliases', []):
                 if query_lower in alias.lower():
-                    results.append(client)
+                    clients.append(_dict_to_client(client_data))
                     break
         
-        return results
+        return clients
 
 
 # Singleton instance
-_client_store: Optional[ClientStore] = None
+_client_store: Optional[MySQLClientStore] = None
 
 
-def get_client_store() -> ClientStore:
+def get_client_store() -> MySQLClientStore:
     """Get the singleton client store instance."""
     global _client_store
     if _client_store is None:
-        _client_store = ClientStore()
+        _client_store = MySQLClientStore()
     return _client_store
+
+
+# Backward compatibility alias
+ClientStore = MySQLClientStore
