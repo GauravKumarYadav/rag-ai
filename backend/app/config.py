@@ -43,10 +43,10 @@ class LLMSettings(BaseModel):
     )
     
     # Common settings applied to all providers
-    temperature: float = 0.25
-    max_tokens: int = 1024
+    temperature: float = 0.35
+    max_tokens: int = 4096
     timeout: float = 60.0
-    context_window: int = 16000
+    context_window: int = 8000
     
     def get_active_provider(self) -> LLMProviderSettings:
         """Get settings for the currently active provider."""
@@ -73,6 +73,21 @@ class RAGSettings(BaseModel):
     
     # Embedding service URL (microservices mode)
     embedding_service_url: Optional[str] = None
+    
+    # Reranker settings (for small model optimization)
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_enabled: bool = True
+    
+    # Retrieval settings
+    initial_fetch_k: int = 30  # Fetch more candidates for reranking
+    rerank_top_k: int = 5      # Keep top K after reranking
+    mmr_lambda: float = 0.5    # MMR diversity parameter (0=max diversity, 1=max relevance)
+    
+    # Context budget (token limit for retrieved context)
+    context_token_budget: int = 1000
+    
+    # Evidence thresholds
+    min_confidence_threshold: float = 0.3  # Below this, add uncertainty disclaimer
 
 
 class RedisSettings(BaseModel):
@@ -86,8 +101,13 @@ class RedisSettings(BaseModel):
 class SessionSettings(BaseModel):
     """Session and memory settings."""
     
-    max_tokens: int = 4000
-    max_messages: int = 20
+    max_tokens: int = 2500
+    max_messages: int = 15
+    
+    # Sliding window settings (for small model optimization)
+    sliding_window_turns: int = 3  # Keep only last N turns in context
+    episodic_memory_enabled: bool = True  # Extract important decisions/facts
+    running_summary_enabled: bool = True  # Summarize older history
 
 
 class ServerSettings(BaseModel):

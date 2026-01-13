@@ -96,7 +96,8 @@ services:
     ports:
       - "8020:8000"
     volumes:
-      - chroma_data:/chroma/chroma
+      # ChromaDB uses /data as persist_path - mount local directory for persistence
+      - ./data/chroma-docker:/data
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
@@ -210,7 +211,7 @@ services:
       - CHROMADB_URL=http://chromadb:8000
       - EMBEDDING_SERVICE_URL=http://embedding-service:8000
       - OLLAMA_URL=http://ollama:11434
-      - CHAT_MODEL=${CHAT_MODEL:-deepseek-r1:1.5b}
+      - CHAT_MODEL=${CHAT_MODEL:-mistral:latest}
       - CRON_SCHEDULE=${EVAL_CRON_SCHEDULE:-0 2 * * *}
       - CRON_TIMEZONE=UTC
       - RUN_ON_STARTUP=false
@@ -246,15 +247,19 @@ services:
       - LLM__LMSTUDIO__MODEL=${LMSTUDIO_MODEL:-local-model}
       # Ollama settings (containerized)
       - LLM__OLLAMA__BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
-      - LLM__OLLAMA__MODEL=${CHAT_MODEL:-llama3.2:3b}
+      - LLM__OLLAMA__MODEL=${CHAT_MODEL:-mistral:latest}
       # OpenAI settings
       - LLM__OPENAI__BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - LLM__OPENAI__MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - LLM__OPENAI__API_KEY=${OPENAI_API_KEY:-}
       # Common LLM settings
-      - LLM__TEMPERATURE=${LLM_TEMPERATURE:-0.25}
-      - LLM__MAX_TOKENS=${LLM_MAX_TOKENS:-1024}
+      # Token settings optimized for Mistral 7B (8K context)
+      - LLM__TEMPERATURE=0.35
+      - LLM__MAX_TOKENS=4096
       - LLM__TIMEOUT=${LLM_TIMEOUT:-180.0}
+      - LLM__CONTEXT_WINDOW=8000
+      - SESSION__MAX_TOKENS=2500
+      - SESSION__MAX_MESSAGES=15
       # RAG Configuration - Use ChromaDB server
       - RAG__PROVIDER=chromadb
       - RAG__URL=http://chromadb:8000
