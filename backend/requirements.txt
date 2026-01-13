@@ -41,3 +41,4 @@ respx>=0.20.0
 
 # Small Model RAG Optimization
 sentence-transformers>=2.2.0  # Cross-encoder reranking
+rank-bm25>=0.2.2  # BM25 keyword search for hybrid retrieval

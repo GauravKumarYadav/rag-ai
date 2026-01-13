@@ -11,13 +11,18 @@ bullet points that small models can process effectively.
 Output format:
 - Policy X requires Y within 30 days. [doc3#c12]
 - Exception: Z allowed if A is true. [doc3#c15]
+
+Citation Safety:
+- Each fact tracks the specific chunk_ids that support it
+- Citations are validated against chunk_ids (not string matching)
+- Coverage metrics ensure citation completeness
 """
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Set
 from collections import Counter
 
 from app.models.schemas import RetrievalHit
@@ -27,16 +32,73 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CompressedFact:
-    """A single compressed fact with citation."""
-    text: str           # The fact as a bullet point
-    source_id: str      # Document/chunk ID for citation
-    source_name: str    # Human-readable source name
-    score: float        # Relevance/confidence score
-    metadata: Dict[str, Any]
+    """
+    A single compressed fact with citation tracking.
+    
+    Each fact tracks which chunk_ids support it for citation validation.
+    Multiple chunks may support a single fact (e.g., corroborating evidence).
+    """
+    text: str                           # The fact as a bullet point
+    chunk_ids: List[str]                # Chunk IDs that support this fact
+    source_name: str                    # Human-readable source name
+    score: float                        # Relevance/confidence score
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # Legacy compatibility - primary source_id
+    @property
+    def source_id(self) -> str:
+        """Primary source ID (first chunk_id)."""
+        return self.chunk_ids[0] if self.chunk_ids else ""
     
     def to_citation_string(self) -> str:
         """Format as bullet with citation."""
         return f"- {self.text} [{self.source_name}]"
+    
+    def to_citation_string_with_ids(self) -> str:
+        """Format as bullet with chunk IDs for validation."""
+        ids_str = ",".join(self.chunk_ids[:3])  # Limit to first 3
+        return f"- {self.text} [{self.source_name}] ({ids_str})"
+    
+    def supports_chunk(self, chunk_id: str) -> bool:
+        """Check if this fact is supported by a specific chunk."""
+        return chunk_id in self.chunk_ids
+
+
+def create_compressed_fact_from_hit(
+    text: str,
+    hit: RetrievalHit,
+    additional_hits: Optional[List[RetrievalHit]] = None,
+) -> CompressedFact:
+    """
+    Create a CompressedFact from RetrievalHit(s).
+    
+    Args:
+        text: The compressed fact text
+        hit: Primary source hit
+        additional_hits: Additional supporting hits
+        
+    Returns:
+        CompressedFact with proper chunk_id tracking
+    """
+    # Collect all chunk_ids
+    chunk_ids = [hit.id]
+    if additional_hits:
+        for h in additional_hits:
+            if h.id not in chunk_ids:
+                chunk_ids.append(h.id)
+    
+    # Get source name
+    source_name = hit.metadata.get('source_filename', hit.metadata.get('source', hit.id))
+    if '/' in source_name:
+        source_name = source_name.split('/')[-1]
+    
+    return CompressedFact(
+        text=text,
+        chunk_ids=chunk_ids,
+        source_name=source_name,
+        score=hit.score,
+        metadata=hit.metadata,
+    )
 
 
 class ExtractiveCompressor:
@@ -215,17 +277,8 @@ Output format (one fact per line):
             if not sentence.endswith('.'):
                 sentence += '.'
             
-            source_name = hit.metadata.get('source', hit.id)
-            if '/' in source_name:
-                source_name = source_name.split('/')[-1]
-            
-            facts.append(CompressedFact(
-                text=sentence,
-                source_id=hit.id,
-                source_name=source_name,
-                score=hit.score,
-                metadata=hit.metadata,
-            ))
+            # Use helper function for proper chunk_id tracking
+            facts.append(create_compressed_fact_from_hit(sentence, hit))
         
         return facts
     
@@ -258,17 +311,8 @@ Output format (one fact per line):
                 # Use last source as fallback
                 _, hit = sentences_with_sources[-1]
             
-            source_name = hit.metadata.get('source', hit.id)
-            if '/' in source_name:
-                source_name = source_name.split('/')[-1]
-            
-            facts.append(CompressedFact(
-                text=bullet,
-                source_id=hit.id,
-                source_name=source_name,
-                score=hit.score,
-                metadata=hit.metadata,
-            ))
+            # Use helper function for proper chunk_id tracking
+            facts.append(create_compressed_fact_from_hit(bullet, hit))
         
         return facts
 
@@ -354,23 +398,22 @@ class ContextCompressor:
             content = hit.content
             first_sentence = content.split('.')[0] + '.' if '.' in content else content[:200]
             
-            source_name = hit.metadata.get('source', hit.id)
-            if '/' in source_name:
-                source_name = source_name.split('/')[-1]
-            
-            facts.append(CompressedFact(
-                text=first_sentence.strip(),
-                source_id=hit.id,
-                source_name=source_name,
-                score=hit.score,
-                metadata=hit.metadata,
-            ))
+            # Use helper function for proper chunk_id tracking
+            facts.append(create_compressed_fact_from_hit(first_sentence.strip(), hit))
         
         return facts
     
-    def format_facts_for_prompt(self, facts: List[CompressedFact]) -> str:
+    def format_facts_for_prompt(
+        self, 
+        facts: List[CompressedFact],
+        include_chunk_ids: bool = False,
+    ) -> str:
         """
         Format compressed facts for inclusion in prompt.
+        
+        Args:
+            facts: List of compressed facts
+            include_chunk_ids: If True, include chunk IDs for verification
         
         Returns formatted string like:
         Retrieved context:
@@ -382,9 +425,40 @@ class ContextCompressor:
         
         lines = ["Retrieved context:"]
         for fact in facts:
-            lines.append(fact.to_citation_string())
+            if include_chunk_ids:
+                lines.append(fact.to_citation_string_with_ids())
+            else:
+                lines.append(fact.to_citation_string())
         
         return "\n".join(lines)
+    
+    def get_all_chunk_ids(self, facts: List[CompressedFact]) -> Set[str]:
+        """
+        Get all chunk IDs referenced by a list of facts.
+        
+        Useful for citation validation.
+        """
+        chunk_ids = set()
+        for fact in facts:
+            chunk_ids.update(fact.chunk_ids)
+        return chunk_ids
+    
+    def create_chunk_to_facts_mapping(
+        self, 
+        facts: List[CompressedFact],
+    ) -> Dict[str, List[CompressedFact]]:
+        """
+        Create a mapping from chunk_id to facts that reference it.
+        
+        Useful for verifying that all retrieved chunks are cited.
+        """
+        mapping: Dict[str, List[CompressedFact]] = {}
+        for fact in facts:
+            for chunk_id in fact.chunk_ids:
+                if chunk_id not in mapping:
+                    mapping[chunk_id] = []
+                mapping[chunk_id].append(fact)
+        return mapping
 
 
 @lru_cache(maxsize=1)

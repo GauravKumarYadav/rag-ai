@@ -10,18 +10,22 @@ A fully local, privacy-focused AI chatbot with RAG (Retrieval-Augmented Generati
 ## ✨ Features
 
 - 🔒 **100% Local & Private** - All data stays on your machine
-- 🤖 **Multi-Provider LLM** - Ollama (recommended), LMStudio, OpenAI, or any OpenAI-compatible API
-- 🖼️ **Vision Support** - Analyze images with vision models (llava, qwen2-vl, llama3.2-vision)
+- 🤖 **Multi-Provider LLM** - Ollama, LMStudio (default), OpenAI, or any OpenAI-compatible API
+- 🖼️ **Vision Support** - Analyze images with vision models (llava, qwen2-vl, qwen3-vl)
 - 📚 **RAG Pipeline** - Upload documents (PDF, DOCX, TXT, images) with OCR support
+- 🔍 **Hybrid Search** - BM25 + Vector search with Reciprocal Rank Fusion (RRF)
+- 🕸️ **Knowledge Graph** - Per-client entity graphs for query expansion
+- ✅ **Answer Verification** - Citation enforcement and grounding checks
 - 🧠 **Long-term Memory** - Automatic conversation summarization and recall
-- 👥 **Multi-Client Isolation** - Separate data per client with auto-detection
+- 👥 **Multi-Client Isolation** - Strict client-based data isolation with user-client access control
 - 🔄 **Real-time Streaming** - SSE and WebSocket streaming responses
 - 📊 **Markdown Tables** - Properly formatted tables in responses
 - 💾 **Chat History** - Save, load, and export conversations
-- 🔐 **JWT Authentication** - Secure API with token-based auth and MySQL audit logging
+- 🔐 **JWT Authentication** - Secure API with token-based auth, user-client assignments, and MySQL audit logging
 - 📈 **Monitoring Stack** - Prometheus metrics, Loki logs, Grafana dashboards
-- 🧪 **RAG Evaluation** - Automated quality metrics (precision, recall, MRR, faithfulness)
-- 🛡️ **Admin Dashboard** - Audit logs, user management, and system statistics
+- 🧪 **RAG Evaluation** - Automated quality metrics (precision, recall, MRR, faithfulness) + curated gold datasets
+- 🛡️ **Admin Dashboard** - Audit logs, user management, client access control, and system statistics
+- ⚡ **Pipeline Gating** - Intent-based and confidence-based gating to skip unnecessary stages
 - 🐳 **Microservices Architecture** - Scalable containerized deployment with Podman/Docker
 
 ## 🏗️ Architecture
@@ -133,9 +137,11 @@ cp .env.example .env
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `ollama` | `ollama`, `lmstudio`, `openai`, `custom` |
-| `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `llama3.2:1b` | Default chat model |
+| `LLM__PROVIDER` | `lmstudio` | `ollama`, `lmstudio`, `openai`, `custom` |
+| `LLM__LMSTUDIO__BASE_URL` | `http://host.containers.internal:1234/v1` | LM Studio API endpoint |
+| `LLM__LMSTUDIO__MODEL` | `qwen/qwen3-vl-30b` | Default chat model |
+| `LLM__OLLAMA__BASE_URL` | `http://ollama:11434` | Ollama API endpoint |
+| `LLM__OLLAMA__MODEL` | `mistral:latest` | Ollama chat model |
 | `EMBEDDING_MODEL` | `nomic-embed-text` | Embedding model for RAG |
 | `MYSQL_HOST` | `mysql` | MySQL host |
 | `MYSQL_PORT` | `3306` | MySQL port |
@@ -145,6 +151,34 @@ cp .env.example .env
 | `REDIS_URL` | `redis://redis:6379` | Redis for session persistence and caching |
 | `CHROMADB_HOST` | `chromadb` | ChromaDB host |
 | `CHROMADB_PORT` | `8000` | ChromaDB port |
+
+### RAG Quality Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RAG__BM25_ENABLED` | `true` | Enable hybrid BM25+vector search |
+| `RAG__BM25_WEIGHT` | `0.4` | BM25 weight in RRF fusion |
+| `RAG__KNOWLEDGE_GRAPH_ENABLED` | `true` | Enable per-client knowledge graphs |
+| `RAG__VERIFICATION_ENABLED` | `true` | Enable answer verification |
+| `RAG__CITATION_REQUIRED` | `true` | Require source citations |
+| `RAG__MIN_CITATION_COVERAGE` | `0.7` | Min citation coverage (70%) |
+
+### Chunking Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RAG__CHUNK_TOKEN_SIZE` | `512` | Target chunk size in tokens |
+| `RAG__CHUNK_TOKEN_OVERLAP` | `128` | Overlap between chunks |
+| `RAG__MIN_CHUNK_TOKENS` | `50` | Minimum chunk size |
+| `RAG__RESPECT_HEADINGS` | `true` | Chunk along heading boundaries |
+
+### Pipeline Gating Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RAG__SKIP_RETRIEVAL_FOR_CHITCHAT` | `true` | Skip RAG for chitchat intents |
+| `RAG__CONFIDENCE_GATING_ENABLED` | `true` | Skip stages when confidence is high |
+| `RAG__KG_EXPANSION_GATING` | `true` | Only expand KG when initial recall is low |
 
 ### Vision Models
 
@@ -171,10 +205,12 @@ rag-ai/
 │   ├── app/
 │   │   ├── api/routes/      # API endpoints
 │   │   ├── clients/         # LLM client adapters (Ollama, OpenAI, LMStudio)
+│   │   ├── evaluation/      # RAG evaluation & quality metrics
+│   │   ├── knowledge/       # Knowledge graph (entity extraction, graph store)
 │   │   ├── memory/          # Session & long-term memory
 │   │   ├── models/          # Pydantic schemas
-│   │   ├── rag/             # Vector store & retrieval
-│   │   ├── services/        # Business logic
+│   │   ├── rag/             # Vector store, hybrid search, reranking
+│   │   ├── services/        # Business logic, verification, compression
 │   │   ├── config.py        # Settings
 │   │   └── main.py          # FastAPI app
 │   ├── Dockerfile
@@ -187,7 +223,11 @@ rag-ai/
 ├── frontend/
 │   └── index.html           # Single-page chat UI
 ├── data/
-│   ├── chroma/              # Vector database storage
+│   ├── chroma/              # Vector database storage (standalone)
+│   ├── chroma-docker/       # Vector database storage (microservices)
+│   ├── bm25/                # BM25 index storage
+│   ├── knowledge_graphs/    # Per-client SQLite knowledge graphs
+│   ├── evaluation/          # Evaluation test cases
 │   └── raw/                 # Documents to ingest
 ├── docker/
 │   ├── chromadb/            # ChromaDB config
@@ -208,42 +248,107 @@ rag-ai/
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/auth/register` | POST | Register new user |
-| `/api/v1/auth/login` | POST | Login and get JWT token |
-| `/api/v1/auth/me` | GET | Get current user info |
+| `/auth/register` | POST | Register new user |
+| `/auth/login` | POST | Login and get JWT token |
+| `/auth/me` | GET | Get current user info |
 
 ### Core API
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/chat` | POST | Chat with streaming support |
+| `/chat` | POST | Chat with streaming support (include `client_id` for scoped retrieval) |
 | `/chat/ws/{id}` | WebSocket | Real-time chat |
-| `/documents/upload` | POST | Upload documents |
+| `/documents/upload` | POST | Upload documents (with chunking options) |
 | `/documents/search` | POST | Search documents |
-| `/clients` | GET/POST | Manage clients |
-| `/clients/{id}` | GET/PUT/DELETE | Client CRUD |
+| `/documents` | GET | List documents |
+| `/documents/{id}` | DELETE | Delete document by ID or filename |
 | `/models` | GET | List available models |
 | `/models/switch` | POST | Switch LLM provider |
 | `/health` | GET | Health check |
-| `/stats` | GET | System statistics |
+| `/status` | GET | System status and model info |
 | `/metrics` | GET | Prometheus metrics |
+
+### Client Management API
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/clients` | GET/POST | List/create clients |
+| `/clients/{id}` | GET/PUT/DELETE | Client CRUD |
+| `/clients/{id}/stats` | GET | Get client document stats |
+| `/clients/my/assigned` | GET | List current user's accessible clients |
+| `/clients/{id}/users` | GET | List users with access to client (admin) |
+| `/clients/{id}/users/{user_id}` | POST | Grant user access to client (admin) |
+| `/clients/{id}/users/{user_id}` | DELETE | Revoke user access from client (admin) |
+| `/clients/user/{user_id}/assigned` | GET | List clients assigned to a user |
 
 ### Admin API (Superuser only)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/admin/audit-logs` | GET | View audit logs |
-| `/api/v1/admin/users` | GET/POST | Manage users |
-| `/api/v1/admin/stats` | GET | System statistics |
-| `/api/v1/admin/config` | GET | View configuration |
+| `/admin/audit-logs` | GET | View audit logs |
+| `/admin/users` | GET/POST | Manage users |
+| `/admin/users/{id}` | PATCH/DELETE | Update/delete user |
+| `/admin/stats` | GET | System statistics |
+| `/admin/config` | GET | View configuration |
 
 ### Evaluation API (Superuser only)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/evaluation/generate` | POST | Generate test dataset |
-| `/api/v1/evaluation/datasets` | GET | List datasets |
-| `/api/v1/evaluation/runs` | POST/GET | Run/list evaluations |
+| `/evaluation/datasets` | POST/GET | Generate/list synthetic datasets |
+| `/evaluation/runs` | POST/GET | Run/list evaluations |
+| `/evaluation/runs/{id}` | GET | Get evaluation details |
+| `/evaluation/curated-datasets` | GET | List curated gold datasets |
+| `/evaluation/curated-runs` | POST | Run curated evaluation |
+| `/evaluation/curated-runs/{path}/details` | GET | Get curated evaluation details |
+
+## 👥 Client Isolation & Access Control
+
+### Overview
+
+The system enforces strict client-based data isolation:
+- Each **client** has its own documents, knowledge graph, and memories
+- **Users** must be assigned to clients to access their data
+- **Admins** can access all clients and manage user assignments
+
+### Managing User Access (Admin)
+
+```bash
+# Assign user to a client
+curl -X POST http://localhost:8000/clients/{client_id}/users/{user_id} \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Revoke user access
+curl -X DELETE http://localhost:8000/clients/{client_id}/users/{user_id} \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# List users with access to a client
+curl http://localhost:8000/clients/{client_id}/users \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+### Using the UI
+
+1. Go to **Profile → Clients** tab
+2. In the **User Access Management** panel:
+   - Select a client
+   - Select a user
+   - Click **Grant Access** or **Revoke Access**
+
+### Chat with Client Context
+
+```bash
+# Include client_id in chat requests for scoped retrieval
+curl -X POST http://localhost:8000/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What are the policies?",
+    "client_id": "your-client-uuid"
+  }'
+```
+
+In the UI, select a client from the header dropdown before chatting.
 
 ## 🐳 Docker Deployment
 
@@ -297,6 +402,17 @@ curl -X POST http://localhost:8000/models/switch \
 ```
 
 ## 🛠️ Troubleshooting
+
+### LM Studio Connection Failed
+- Ensure LM Studio is running on the host machine
+- Check the model is loaded (e.g., `qwen/qwen3-vl-30b`)
+- For containers, use `http://host.containers.internal:1234/v1` as base URL
+- Verify `.env` settings:
+  ```bash
+  LLM__PROVIDER=lmstudio
+  LLM__LMSTUDIO__BASE_URL=http://host.containers.internal:1234/v1
+  LLM__LMSTUDIO__MODEL=qwen/qwen3-vl-30b
+  ```
 
 ### Ollama Connection Failed
 - Check Ollama is running: `podman logs rag-ollama` or `ollama list`

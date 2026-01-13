@@ -2,13 +2,21 @@
 # ================================
 # This docker-compose file runs the complete microservices stack:
 #
-# LLM PROVIDERS (configurable via LLM_PROVIDER env var):
-# - LM Studio: Fast local inference on host GPU (default: LLM_PROVIDER=lmstudio)
-# - Ollama: Containerized inference, good for CPU or when LM Studio unavailable
+# LLM PROVIDERS (configurable via LLM__PROVIDER env var):
+# - LM Studio: Remote inference via ngrok (default: LLM__PROVIDER=lmstudio)
+#   Set LLM__LMSTUDIO__BASE_URL in .env to your ngrok URL
+# - Ollama: Containerized inference, starts only with --profile ollama
 #
 # EMBEDDING PROVIDERS (configurable via EMBEDDING_PROVIDER env var):
-# - Ollama: Uses nomic-embed-text model (default: EMBEDDING_PROVIDER=ollama)
-# - LM Studio: Uses text-embedding-nomic-embed-text-v1.5 or similar
+# - lmstudio: Uses remote LM Studio for embeddings (default when LLM__PROVIDER=lmstudio)
+# - ollama: Uses containerized Ollama for embeddings (requires --profile ollama)
+#
+# USAGE:
+#   # With LM Studio (default - Ollama container NOT started):
+#   docker-compose -f docker-compose.microservices.yml up -d
+#
+#   # With Ollama (starts Ollama container):
+#   docker-compose -f docker-compose.microservices.yml --profile ollama up -d
 #
 # SERVICES:
 # - Redis (Queue, Cache, Sessions)
@@ -29,12 +37,15 @@ services:
   # INFRASTRUCTURE SERVICES
   # ============================================================
   
-  # Ollama - Containerized LLM server
-  # Used for: Embeddings (default), Chat (when LLM_PROVIDER=ollama)
-  # Alternative to LM Studio running on host machine
+  # Ollama - Containerized LLM server (OPTIONAL)
+  # Only starts when using: docker-compose --profile ollama up -d
+  # Used for: Embeddings and Chat when LLM__PROVIDER=ollama
+  # Not needed when using remote LM Studio via ngrok
   ollama:
     image: ollama/ollama:latest
     container_name: rag-ollama
+    profiles:
+      - ollama  # Only starts with --profile ollama
     ports:
       - "11434:11434"
     volumes:
@@ -111,7 +122,7 @@ services:
   # ============================================================
 
   # Embedding Service - Dedicated embedding generation (multi-provider)
-  # Supports: ollama (default) or lmstudio
+  # Supports: lmstudio (default) or ollama
   # Set EMBEDDING_PROVIDER in .env to switch
   embedding-service:
     build:
@@ -121,23 +132,23 @@ services:
     ports:
       - "8010:8000"
     environment:
-      # Provider selection: "ollama" or "lmstudio"
-      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-ollama}
+      # Provider selection: "lmstudio" or "ollama"
+      # Default to lmstudio when using remote LM Studio via ngrok
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-lmstudio}
+      # LM Studio settings (default - remote via ngrok)
+      - LMSTUDIO_URL=${LLM__LMSTUDIO__BASE_URL:-https://45fe10225217.ngrok-free.app/v1}
       # Ollama settings (when EMBEDDING_PROVIDER=ollama)
       - OLLAMA_URL=http://ollama:11434
-      # LM Studio settings (when EMBEDDING_PROVIDER=lmstudio)
-      - LMSTUDIO_URL=${LMSTUDIO_BASE_URL:-http://host.containers.internal:1234/v1}
       # Model name (use provider-appropriate model)
+      # LM Studio: text-embedding-nomic-embed-text-v1.5 or similar
       # Ollama: nomic-embed-text
-      # LM Studio: text-embedding-nomic-embed-text-v1.5
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-nomic-embed-text-v1.5}
       - REDIS_URL=redis://redis:6379
       - CACHE_TTL=86400
     depends_on:
-      ollama:
-        condition: service_started
       redis:
         condition: service_healthy
+      # Note: No Ollama dependency - works with remote LM Studio
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -210,8 +221,11 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE:-audit_logs}
       - CHROMADB_URL=http://chromadb:8000
       - EMBEDDING_SERVICE_URL=http://embedding-service:8000
+      # LLM Provider settings (uses LM Studio by default)
+      - LLM_PROVIDER=${LLM__PROVIDER:-lmstudio}
+      - LMSTUDIO_URL=${LLM__LMSTUDIO__BASE_URL:-https://45fe10225217.ngrok-free.app/v1}
       - OLLAMA_URL=http://ollama:11434
-      - CHAT_MODEL=${CHAT_MODEL:-mistral:latest}
+      - CHAT_MODEL=${LLM__LMSTUDIO__MODEL:-deepseek-coder-v2-lite-instruct}
       - CRON_SCHEDULE=${EVAL_CRON_SCHEDULE:-0 2 * * *}
       - CRON_TIMEZONE=UTC
       - RUN_ON_STARTUP=false
@@ -222,8 +236,7 @@ services:
         condition: service_started
       embedding-service:
         condition: service_started
-      ollama:
-        condition: service_started
+      # Note: No Ollama dependency - works with remote LM Studio
     restart: unless-stopped
 
   # ============================================================
@@ -239,49 +252,64 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # LLM Configuration - Supports: lmstudio, ollama, openai, custom
-      # Set LLM_PROVIDER in .env to switch between providers
-      - LLM__PROVIDER=${LLM_PROVIDER:-ollama}
-      # LM Studio settings (runs on host, use host.docker.internal to access from container)
-      - LLM__LMSTUDIO__BASE_URL=${LMSTUDIO_BASE_URL:-http://host.containers.internal:1234/v1}
-      - LLM__LMSTUDIO__MODEL=${LMSTUDIO_MODEL:-local-model}
-      # Ollama settings (containerized)
-      - LLM__OLLAMA__BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
-      - LLM__OLLAMA__MODEL=${CHAT_MODEL:-mistral:latest}
+      # LLM Configuration - Using remote LM Studio via ngrok
+      - LLM__PROVIDER=${LLM__PROVIDER:-lmstudio}
+      # LM Studio settings (remote via ngrok - your other PC)
+      - LLM__LMSTUDIO__BASE_URL=${LLM__LMSTUDIO__BASE_URL:-https://45fe10225217.ngrok-free.app/v1}
+      - LLM__LMSTUDIO__MODEL=${LLM__LMSTUDIO__MODEL:-deepseek-coder-v2-lite-instruct}
+      # Ollama settings (containerized fallback - only with --profile ollama)
+      - LLM__OLLAMA__BASE_URL=http://ollama:11434
+      - LLM__OLLAMA__MODEL=${LLM__OLLAMA__MODEL:-mistral:latest}
       # OpenAI settings
-      - LLM__OPENAI__BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      - LLM__OPENAI__MODEL=${OPENAI_MODEL:-gpt-4o-mini}
-      - LLM__OPENAI__API_KEY=${OPENAI_API_KEY:-}
+      - LLM__OPENAI__BASE_URL=${LLM__OPENAI__BASE_URL:-https://api.openai.com/v1}
+      - LLM__OPENAI__MODEL=${LLM__OPENAI__MODEL:-gpt-4o-mini}
+      - LLM__OPENAI__API_KEY=${LLM__OPENAI__API_KEY:-}
       # Common LLM settings
-      # Token settings optimized for Mistral 7B (8K context)
-      - LLM__TEMPERATURE=0.35
-      - LLM__MAX_TOKENS=4096
-      - LLM__TIMEOUT=${LLM_TIMEOUT:-180.0}
-      - LLM__CONTEXT_WINDOW=8000
-      - SESSION__MAX_TOKENS=2500
-      - SESSION__MAX_MESSAGES=15
+      - LLM__TEMPERATURE=${LLM__TEMPERATURE:-0.35}
+      - LLM__MAX_TOKENS=${LLM__MAX_TOKENS:-4096}
+      - LLM__TIMEOUT=${LLM__TIMEOUT:-120.0}
+      - LLM__CONTEXT_WINDOW=${LLM__CONTEXT_WINDOW:-8000}
+      # Session settings
+      - SESSION__MAX_TOKENS=${SESSION__MAX_TOKENS:-2500}
+      - SESSION__MAX_MESSAGES=${SESSION__MAX_MESSAGES:-15}
+      - SESSION__SLIDING_WINDOW_TURNS=${SESSION__SLIDING_WINDOW_TURNS:-3}
+      - SESSION__EPISODIC_MEMORY_ENABLED=${SESSION__EPISODIC_MEMORY_ENABLED:-true}
+      - SESSION__RUNNING_SUMMARY_ENABLED=${SESSION__RUNNING_SUMMARY_ENABLED:-true}
       # RAG Configuration - Use ChromaDB server
       - RAG__PROVIDER=chromadb
       - RAG__URL=http://chromadb:8000
-      - RAG__EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
-      # Use embedding service instead of direct Ollama
+      - RAG__EMBEDDING_MODEL=${RAG__EMBEDDING_MODEL:-text-embedding-nomic-embed-text-v1.5}
+      # RAG Quality Settings
+      - RAG__RERANKER_ENABLED=${RAG__RERANKER_ENABLED:-true}
+      - RAG__BM25_ENABLED=${RAG__BM25_ENABLED:-true}
+      - RAG__KNOWLEDGE_GRAPH_ENABLED=${RAG__KNOWLEDGE_GRAPH_ENABLED:-true}
+      - RAG__VERIFICATION_ENABLED=${RAG__VERIFICATION_ENABLED:-true}
+      - RAG__CITATION_REQUIRED=${RAG__CITATION_REQUIRED:-true}
+      - RAG__MIN_CONFIDENCE_THRESHOLD=${RAG__MIN_CONFIDENCE_THRESHOLD:-0.3}
+      - RAG__MIN_CITATION_COVERAGE=${RAG__MIN_CITATION_COVERAGE:-0.7}
+      # Data paths for containers
+      - RAG__BM25_PERSIST_PATH=/app/data/bm25
+      - RAG__KG_PERSIST_PATH=/app/data/knowledge_graphs
+      # Use embedding service (connects to LM Studio by default)
       - EMBEDDING_SERVICE_URL=http://embedding-service:8000
       # Redis for sessions
       - REDIS__URL=redis://redis:6379
       # JWT Authentication
-      - JWT__SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production-use-strong-secret}
-      - JWT__ALGORITHM=${JWT_ALGORITHM:-HS256}
-      - JWT__ACCESS_TOKEN_EXPIRE_MINUTES=${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      - JWT__SECRET_KEY=${JWT__SECRET_KEY:-change-me-in-production-use-strong-secret}
+      - JWT__ALGORITHM=${JWT__ALGORITHM:-HS256}
+      - JWT__ACCESS_TOKEN_EXPIRE_MINUTES=${JWT__ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       # MySQL Audit Logging
       - MYSQL__HOST=mysql
       - MYSQL__PORT=3306
-      - MYSQL__DATABASE=${MYSQL_DATABASE:-audit_logs}
+      - MYSQL__DATABASE=${MYSQL__DATABASE:-audit_logs}
       - MYSQL__USER=root
-      - MYSQL__PASSWORD=${MYSQL_ROOT_PASSWORD:-Sarita1!@2024_4}
+      - MYSQL__PASSWORD=${MYSQL__PASSWORD:-Sarita1!@2024_4}
       # Disable in-process evaluation (handled by worker)
-      - EVALUATION_SCHEDULER_ENABLED=false
+      - EVALUATION__SCHEDULER_ENABLED=false
     volumes:
       - ./data/raw:/app/data/raw:ro
+      - ./data/bm25:/app/data/bm25
+      - ./data/knowledge_graphs:/app/data/knowledge_graphs
     depends_on:
       mysql:
         condition: service_healthy
@@ -289,11 +317,12 @@ services:
         condition: service_healthy
       chromadb:
         condition: service_started
-      ollama:
+      embedding-service:
         condition: service_started
+      # Note: No Ollama dependency - works with remote LM Studio
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -20,6 +20,8 @@ from app.evaluation.runner import (
     get_evaluation_run,
     list_evaluation_runs,
     run_evaluation,
+    run_curated_evaluation,
+    list_curated_datasets,
 )
 
 
@@ -208,3 +210,124 @@ async def get_run(run_id: int, current_user: dict = Depends(get_current_user)):
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
+
+
+# =============================================================================
+# CURATED GOLD DATASET ENDPOINTS
+# =============================================================================
+
+
+class CuratedEvaluationRequest(BaseModel):
+    """Request body for running curated gold evaluation."""
+
+    dataset_path: str = Field(
+        "curated_gold.json",
+        description="Path to curated dataset file (relative to data/evaluation or absolute)",
+    )
+    client_id: Optional[str] = Field(None, description="Filter retrieval by client")
+    k: int = Field(5, ge=1, le=20, description="Top-K documents for metrics")
+
+
+class CuratedEvaluationResponse(BaseModel):
+    """Response for curated evaluation run."""
+
+    dataset_name: str
+    dataset_version: str
+    evaluation_type: str
+    total_cases: int
+    evaluated_cases: int
+    passes_all_criteria: bool
+    overall_metrics: dict
+    category_metrics: dict
+    evaluated_at: str
+
+
+@router.get("/curated-datasets")
+async def get_curated_datasets(
+    current_user: dict = Depends(get_current_user),
+):
+    """List all available curated evaluation datasets."""
+
+    datasets = list_curated_datasets()
+    return {"datasets": datasets, "count": len(datasets)}
+
+
+@router.post("/curated-runs")
+async def run_curated_gold_evaluation(
+    request: CuratedEvaluationRequest,
+    current_user: dict = Depends(require_superuser),
+):
+    """
+    Run evaluation on a curated gold dataset.
+    
+    This evaluates RAG quality against hand-crafted test cases with expected
+    answers and sources. Results include:
+    
+    - Retrieval metrics (precision, recall, MRR)
+    - Keyword coverage (how well retrieved content matches expected keywords)
+    - Category breakdown (performance by case type)
+    - Negative case handling (correctly rejecting unanswerable queries)
+    - Pass/fail against predefined criteria
+    """
+
+    try:
+        result = await run_curated_evaluation(
+            dataset_path=request.dataset_path,
+            client_id=request.client_id,
+            k=request.k,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Curated evaluation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+
+    logger.info(
+        "Curated evaluation completed",
+        extra={
+            "dataset": result.get("dataset_name"),
+            "passes": result.get("passes_all_criteria"),
+            "user": current_user.get("username"),
+        },
+    )
+
+    return CuratedEvaluationResponse(
+        dataset_name=result.get("dataset_name", ""),
+        dataset_version=result.get("dataset_version", "1.0"),
+        evaluation_type=result.get("evaluation_type", "curated_gold"),
+        total_cases=result.get("overall_metrics", {}).get("total_cases", 0),
+        evaluated_cases=result.get("overall_metrics", {}).get("evaluated_cases", 0),
+        passes_all_criteria=result.get("passes_all_criteria", False),
+        overall_metrics=result.get("overall_metrics", {}),
+        category_metrics=result.get("category_metrics", {}),
+        evaluated_at=result.get("evaluated_at", ""),
+    )
+
+
+@router.get("/curated-runs/{dataset_path:path}/details")
+async def get_curated_evaluation_details(
+    dataset_path: str,
+    client_id: Optional[str] = Query(None),
+    k: int = Query(5, ge=1, le=20),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Run and get detailed results for a curated dataset.
+    
+    Returns full per-case breakdown including:
+    - Individual case results
+    - Retrieved sources per case
+    - Keyword matches
+    - Error cases (if any)
+    """
+
+    try:
+        result = await run_curated_evaluation(
+            dataset_path=dataset_path,
+            client_id=client_id,
+            k=k,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return result

@@ -110,3 +110,44 @@ CREATE TABLE IF NOT EXISTS clients (
     INDEX idx_name (name),
     INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Insert the Global client (everyone has access to this client)
+INSERT INTO clients (id, name, aliases, metadata)
+VALUES (
+    'global',
+    'Global',
+    '["global", "shared", "common"]',
+    '{"description": "Global client for shared documents accessible by all users"}'
+)
+ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP;
+
+-- ============================================================
+-- User-Client Authorization Tables
+-- ============================================================
+
+-- User-client mapping for authorization
+-- This table controls which clients each user can access
+CREATE TABLE IF NOT EXISTS user_clients (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL,
+    client_id VARCHAR(36) NOT NULL,
+    role ENUM('viewer', 'editor', 'admin') DEFAULT 'viewer',
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    assigned_by VARCHAR(36),
+    UNIQUE KEY unique_user_client (user_id, client_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_client_id (client_id),
+    INDEX idx_role (role),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Grant admin user access to Global client with admin role
+INSERT INTO user_clients (user_id, client_id, role, assigned_by)
+VALUES (
+    'a0000000-0000-0000-0000-000000000001',  -- admin user
+    'global',                                  -- global client
+    'admin',
+    'a0000000-0000-0000-0000-000000000001'   -- self-assigned
+)
+ON DUPLICATE KEY UPDATE role = 'admin';

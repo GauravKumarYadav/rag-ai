@@ -176,6 +176,27 @@ async def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+async def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a user by ID."""
+    try:
+        pool = await get_db_pool()
+        
+        query = """
+        SELECT id, username, email, is_active, is_superuser, created_at
+        FROM users
+        WHERE id = %s
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                await cursor.execute(query, (user_id,))
+                result = await cursor.fetchone()
+                return result
+    except Exception as e:
+        logger.error(f"Failed to get user by ID: {e}")
+        return None
+
+
 async def create_user(
     user_id: str,
     username: str,
@@ -423,3 +444,364 @@ async def search_clients_db(query: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to search clients: {e}")
         return []
+
+
+# ============================================================
+# User-Client Authorization Functions
+# ============================================================
+
+async def init_user_clients_table() -> None:
+    """Initialize the user_clients table if it doesn't exist."""
+    pool = await get_db_pool()
+    
+    create_user_clients_table = """
+    CREATE TABLE IF NOT EXISTS user_clients (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(36) NOT NULL,
+        client_id VARCHAR(36) NOT NULL,
+        role ENUM('viewer', 'editor', 'admin') DEFAULT 'viewer',
+        assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        assigned_by VARCHAR(36),
+        UNIQUE KEY unique_user_client (user_id, client_id),
+        INDEX idx_user_id (user_id),
+        INDEX idx_client_id (client_id),
+        INDEX idx_role (role)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    """
+    
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.execute(create_user_clients_table)
+            logger.info("User-clients table initialized successfully")
+
+
+async def assign_user_to_client(
+    user_id: str,
+    client_id: str,
+    role: str = "viewer",
+    assigned_by: Optional[str] = None,
+) -> bool:
+    """
+    Assign a user to a client with a specific role.
+    
+    Args:
+        user_id: The user's ID
+        client_id: The client's ID
+        role: One of 'viewer', 'editor', 'admin'
+        assigned_by: ID of the user making the assignment
+        
+    Returns:
+        True if assignment was successful
+    """
+    try:
+        pool = await get_db_pool()
+        
+        # Use INSERT ... ON DUPLICATE KEY UPDATE to handle re-assignments
+        insert_query = """
+        INSERT INTO user_clients (user_id, client_id, role, assigned_by)
+        VALUES (%s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE role = VALUES(role), assigned_by = VALUES(assigned_by), assigned_at = CURRENT_TIMESTAMP
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(
+                    insert_query,
+                    (user_id, client_id, role, assigned_by),
+                )
+                logger.info(f"User {user_id} assigned to client {client_id} with role {role}")
+                return True
+    except Exception as e:
+        logger.error(f"Failed to assign user to client: {e}")
+        return False
+
+
+async def remove_user_from_client(user_id: str, client_id: str) -> bool:
+    """
+    Remove a user's access to a client.
+    
+    Args:
+        user_id: The user's ID
+        client_id: The client's ID
+        
+    Returns:
+        True if removal was successful
+    """
+    try:
+        pool = await get_db_pool()
+        
+        delete_query = """
+        DELETE FROM user_clients
+        WHERE user_id = %s AND client_id = %s
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(delete_query, (user_id, client_id))
+                if cursor.rowcount > 0:
+                    logger.info(f"User {user_id} removed from client {client_id}")
+                    return True
+                return False
+    except Exception as e:
+        logger.error(f"Failed to remove user from client: {e}")
+        return False
+
+
+async def get_user_clients_db(user_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all clients a user has access to.
+    
+    Args:
+        user_id: The user's ID
+        
+    Returns:
+        List of client assignments with role information
+    """
+    try:
+        pool = await get_db_pool()
+        
+        query = """
+        SELECT 
+            uc.client_id,
+            uc.role,
+            uc.assigned_at,
+            uc.assigned_by,
+            c.name as client_name,
+            c.aliases as client_aliases
+        FROM user_clients uc
+        JOIN clients c ON uc.client_id = c.id
+        WHERE uc.user_id = %s
+        ORDER BY c.name
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                await cursor.execute(query, (user_id,))
+                results = await cursor.fetchall()
+                for result in results:
+                    if result.get('client_aliases'):
+                        result['client_aliases'] = json.loads(result['client_aliases'])
+                    else:
+                        result['client_aliases'] = []
+                return results
+    except Exception as e:
+        logger.error(f"Failed to get user clients: {e}")
+        return []
+
+
+async def get_user_client_ids(user_id: str) -> List[str]:
+    """
+    Get just the client IDs a user has access to.
+    
+    Args:
+        user_id: The user's ID
+        
+    Returns:
+        List of client IDs
+    """
+    try:
+        pool = await get_db_pool()
+        
+        query = """
+        SELECT client_id FROM user_clients WHERE user_id = %s
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(query, (user_id,))
+                results = await cursor.fetchall()
+                return [row[0] for row in results]
+    except Exception as e:
+        logger.error(f"Failed to get user client IDs: {e}")
+        return []
+
+
+async def get_client_users_db(client_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all users who have access to a client.
+    
+    Args:
+        client_id: The client's ID
+        
+    Returns:
+        List of user assignments with role information
+    """
+    try:
+        pool = await get_db_pool()
+        
+        query = """
+        SELECT 
+            u.id,
+            uc.user_id,
+            uc.role,
+            uc.assigned_at,
+            uc.assigned_by,
+            u.username,
+            u.email,
+            u.is_superuser
+        FROM user_clients uc
+        JOIN users u ON uc.user_id = u.id
+        WHERE uc.client_id = %s AND u.is_active = TRUE
+        ORDER BY u.username
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                await cursor.execute(query, (client_id,))
+                return await cursor.fetchall()
+    except Exception as e:
+        logger.error(f"Failed to get client users: {e}")
+        return []
+
+
+async def check_user_client_access(
+    user_id: str, 
+    client_id: str,
+    required_role: Optional[str] = None,
+) -> bool:
+    """
+    Check if a user has access to a specific client.
+    
+    Args:
+        user_id: The user's ID
+        client_id: The client's ID
+        required_role: If specified, check that user has at least this role
+        
+    Returns:
+        True if user has access (and required role if specified)
+    """
+    try:
+        pool = await get_db_pool()
+        
+        query = """
+        SELECT role FROM user_clients
+        WHERE user_id = %s AND client_id = %s
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(query, (user_id, client_id))
+                result = await cursor.fetchone()
+                
+                if not result:
+                    return False
+                
+                if not required_role:
+                    return True
+                
+                # Role hierarchy: admin > editor > viewer
+                role_hierarchy = {'viewer': 1, 'editor': 2, 'admin': 3}
+                user_role_level = role_hierarchy.get(result[0], 0)
+                required_level = role_hierarchy.get(required_role, 0)
+                
+                return user_role_level >= required_level
+    except Exception as e:
+        logger.error(f"Failed to check user client access: {e}")
+        return False
+
+
+async def get_user_client_role(user_id: str, client_id: str) -> Optional[str]:
+    """
+    Get the user's role for a specific client.
+    
+    Args:
+        user_id: The user's ID
+        client_id: The client's ID
+        
+    Returns:
+        The role ('viewer', 'editor', 'admin') or None if no access
+    """
+    try:
+        pool = await get_db_pool()
+        
+        query = """
+        SELECT role FROM user_clients
+        WHERE user_id = %s AND client_id = %s
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(query, (user_id, client_id))
+                result = await cursor.fetchone()
+                return result[0] if result else None
+    except Exception as e:
+        logger.error(f"Failed to get user client role: {e}")
+        return None
+
+
+async def update_user_client_role(
+    user_id: str,
+    client_id: str,
+    new_role: str,
+    updated_by: Optional[str] = None,
+) -> bool:
+    """
+    Update a user's role for a client.
+    
+    Args:
+        user_id: The user's ID
+        client_id: The client's ID
+        new_role: The new role to assign
+        updated_by: ID of the user making the update
+        
+    Returns:
+        True if update was successful
+    """
+    try:
+        pool = await get_db_pool()
+        
+        update_query = """
+        UPDATE user_clients
+        SET role = %s, assigned_by = %s, assigned_at = CURRENT_TIMESTAMP
+        WHERE user_id = %s AND client_id = %s
+        """
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(
+                    update_query,
+                    (new_role, updated_by, user_id, client_id),
+                )
+                if cursor.rowcount > 0:
+                    logger.info(f"Updated user {user_id} role to {new_role} for client {client_id}")
+                    return True
+                return False
+    except Exception as e:
+        logger.error(f"Failed to update user client role: {e}")
+        return False
+
+
+async def ensure_global_client_exists() -> bool:
+    """
+    Ensure the global client exists in the database.
+    This client is accessible by all users.
+    
+    Returns:
+        True if global client exists or was created
+    """
+    try:
+        pool = await get_db_pool()
+        
+        # Check if global client exists
+        check_query = "SELECT id FROM clients WHERE id = 'global'"
+        
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(check_query)
+                result = await cursor.fetchone()
+                
+                if result:
+                    return True
+                
+                # Create global client
+                insert_query = """
+                INSERT INTO clients (id, name, aliases, metadata)
+                VALUES ('global', 'Global', '["global", "shared", "common"]', 
+                        '{"description": "Global client for shared documents accessible by all users"}')
+                """
+                await cursor.execute(insert_query)
+                logger.info("Global client created")
+                return True
+    except Exception as e:
+        logger.error(f"Failed to ensure global client exists: {e}")
+        return False

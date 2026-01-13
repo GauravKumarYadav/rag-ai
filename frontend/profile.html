@@ -816,89 +816,305 @@
     // ============================================================
     // CLIENTS TAB
     // ============================================================
+    let allUsers = []; // Cache users list for assignment UI
+    
     async function renderClients() {
+        const isAdmin = currentUserInfo && currentUserInfo.is_superuser;
+        
         content.innerHTML = `${renderUserInfo()}<div class="grid">
-            <div class="panel" id="clientList"><h3>Clients</h3><div class="muted">Loading...</div></div>
+            <div class="panel" id="clientList" style="grid-column: 1 / -1;"><h3>Clients</h3><div class="muted">Loading...</div></div>
+            ${isAdmin ? `
             <div class="panel">
-                <h3>Create Client</h3>
+                <h3><i class="fa fa-plus-circle" style="color: var(--success);"></i> Create Client</h3>
                 <div class="form-grid">
                     <div><label>Name</label><input id="newClientName" placeholder="Acme Corp" /></div>
                     <div><label>Aliases (comma-separated)</label><input id="newClientAliases" placeholder="acme, acme-corp" /></div>
                 </div>
                 <div style="margin-top:10px;"><button class="btn" id="createClientBtn">Create</button><span id="clientMsg" class="muted" style="margin-left:8px;"></span></div>
             </div>
+            <div class="panel" id="userAccessPanel">
+                <h3><i class="fa fa-user-plus" style="color: var(--accent);"></i> User Access Management</h3>
+                <div class="form-grid">
+                    <div>
+                        <label>Select Client</label>
+                        <select id="accessClientSelect" style="width:100%;padding:10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg);color:var(--text);">
+                            <option value="">-- Select a client --</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Select User</label>
+                        <select id="accessUserSelect" style="width:100%;padding:10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg);color:var(--text);">
+                            <option value="">-- Select a user --</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top:10px;display:flex;gap:8px;">
+                    <button class="btn" id="assignUserBtn"><i class="fa fa-plus"></i> Grant Access</button>
+                    <button class="btn secondary" id="revokeUserBtn" style="color:var(--error);"><i class="fa fa-minus"></i> Revoke Access</button>
+                </div>
+                <div id="accessMsg" class="muted" style="margin-top:8px;"></div>
+                <div id="clientUsersPreview" style="margin-top:16px;"></div>
+            </div>
+            ` : ''}
         </div>`;
 
-        document.getElementById('createClientBtn').addEventListener('click', async () => {
-            const name = document.getElementById('newClientName').value.trim();
-            const aliasesStr = document.getElementById('newClientAliases').value.trim();
-            const aliases = aliasesStr ? aliasesStr.split(',').map(a => a.trim()).filter(a => a) : [];
-            const msg = document.getElementById('clientMsg');
-            msg.textContent = '...';
-            try {
-                const res = await fetch(`${API_BASE}/clients`, {
-                    method: 'POST',
-                    headers: getHeaders(),
-                    body: JSON.stringify({ name, aliases, metadata: {} }),
-                });
-                if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
-                msg.textContent = 'Client created';
-                document.getElementById('newClientName').value = '';
-                document.getElementById('newClientAliases').value = '';
-                loadClientList();
-            } catch (err) {
-                msg.textContent = err.message;
-            }
-        });
+        if (isAdmin) {
+            document.getElementById('createClientBtn').addEventListener('click', async () => {
+                const name = document.getElementById('newClientName').value.trim();
+                const aliasesStr = document.getElementById('newClientAliases').value.trim();
+                const aliases = aliasesStr ? aliasesStr.split(',').map(a => a.trim()).filter(a => a) : [];
+                const msg = document.getElementById('clientMsg');
+                msg.textContent = '...';
+                try {
+                    const res = await fetch(`${API_BASE}/clients`, {
+                        method: 'POST',
+                        headers: getHeaders(),
+                        body: JSON.stringify({ name, aliases, metadata: {} }),
+                    });
+                    if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+                    msg.textContent = 'Client created';
+                    msg.className = 'muted badge-success';
+                    document.getElementById('newClientName').value = '';
+                    document.getElementById('newClientAliases').value = '';
+                    loadClientList();
+                } catch (err) {
+                    msg.textContent = err.message;
+                    msg.className = 'muted badge-error';
+                }
+            });
+            
+            // User access management
+            document.getElementById('assignUserBtn').addEventListener('click', assignUserToClient);
+            document.getElementById('revokeUserBtn').addEventListener('click', revokeUserFromClient);
+            document.getElementById('accessClientSelect').addEventListener('change', loadClientUsersPreview);
+            
+            // Load users for dropdown
+            loadUsersForAccessPanel();
+        }
 
         loadClientList();
     }
+    
+    async function loadUsersForAccessPanel() {
+        try {
+            const res = await fetch(`${API_BASE}/admin/users?limit=200`, { headers: getHeaders() });
+            if (res.ok) {
+                allUsers = await res.json();
+                const userSelect = document.getElementById('accessUserSelect');
+                if (userSelect) {
+                    userSelect.innerHTML = '<option value="">-- Select a user --</option>';
+                    allUsers.forEach(u => {
+                        const opt = document.createElement('option');
+                        opt.value = u.id;
+                        opt.textContent = `${u.username} ${u.is_superuser ? '(Admin)' : ''}`;
+                        userSelect.appendChild(opt);
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('Failed to load users:', err);
+        }
+    }
+    
+    async function assignUserToClient() {
+        const clientId = document.getElementById('accessClientSelect').value;
+        const userId = document.getElementById('accessUserSelect').value;
+        const msg = document.getElementById('accessMsg');
+        
+        if (!clientId || !userId) {
+            msg.textContent = 'Please select both a client and a user';
+            msg.className = 'muted badge-error';
+            return;
+        }
+        
+        msg.textContent = 'Assigning...';
+        msg.className = 'muted';
+        
+        try {
+            const res = await fetch(`${API_BASE}/clients/${clientId}/users/${userId}`, {
+                method: 'POST',
+                headers: getHeaders(),
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                msg.textContent = data.message || 'User assigned successfully';
+                msg.className = 'muted badge-success';
+                loadClientUsersPreview();
+            } else {
+                const err = await res.json();
+                throw new Error(err.detail || 'Failed to assign user');
+            }
+        } catch (err) {
+            msg.textContent = err.message;
+            msg.className = 'muted badge-error';
+        }
+    }
+    
+    async function revokeUserFromClient() {
+        const clientId = document.getElementById('accessClientSelect').value;
+        const userId = document.getElementById('accessUserSelect').value;
+        const msg = document.getElementById('accessMsg');
+        
+        if (!clientId || !userId) {
+            msg.textContent = 'Please select both a client and a user';
+            msg.className = 'muted badge-error';
+            return;
+        }
+        
+        if (!confirm('Are you sure you want to revoke this user\'s access to this client?')) return;
+        
+        msg.textContent = 'Revoking...';
+        msg.className = 'muted';
+        
+        try {
+            const res = await fetch(`${API_BASE}/clients/${clientId}/users/${userId}`, {
+                method: 'DELETE',
+                headers: getHeaders(),
+            });
+            
+            if (res.ok) {
+                msg.textContent = 'Access revoked successfully';
+                msg.className = 'muted badge-success';
+                loadClientUsersPreview();
+            } else {
+                const err = await res.json();
+                throw new Error(err.detail || 'Failed to revoke access');
+            }
+        } catch (err) {
+            msg.textContent = err.message;
+            msg.className = 'muted badge-error';
+        }
+    }
+    
+    async function loadClientUsersPreview() {
+        const clientId = document.getElementById('accessClientSelect').value;
+        const preview = document.getElementById('clientUsersPreview');
+        
+        if (!clientId) {
+            preview.innerHTML = '';
+            return;
+        }
+        
+        preview.innerHTML = '<div class="muted">Loading users...</div>';
+        
+        try {
+            const res = await fetch(`${API_BASE}/clients/${clientId}/users`, { headers: getHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                const users = data.users || [];
+                
+                if (users.length === 0) {
+                    preview.innerHTML = `
+                        <div style="background:var(--panel);border-radius:var(--radius);padding:12px;border:1px solid var(--border);">
+                            <div class="muted" style="text-align:center;">
+                                <i class="fa fa-users" style="font-size:1.5rem;margin-bottom:8px;display:block;"></i>
+                                No users have access to this client yet
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    const userChips = users.map(u => `
+                        <span class="chip" style="margin:2px;display:inline-flex;align-items:center;gap:4px;">
+                            <i class="fa fa-user" style="font-size:10px;"></i>
+                            ${u.username}
+                            ${u.is_superuser ? '<i class="fa fa-shield" style="font-size:10px;color:var(--success);" title="Admin"></i>' : ''}
+                        </span>
+                    `).join('');
+                    
+                    preview.innerHTML = `
+                        <div style="background:var(--panel);border-radius:var(--radius);padding:12px;border:1px solid var(--border);">
+                            <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:8px;">
+                                Users with access (${users.length})
+                            </div>
+                            <div>${userChips}</div>
+                        </div>
+                    `;
+                }
+            }
+        } catch (err) {
+            preview.innerHTML = `<div class="muted badge-error">Failed to load users</div>`;
+        }
+    }
 
     async function loadClientList() {
+        const isAdmin = currentUserInfo && currentUserInfo.is_superuser;
+        
         try {
             const res = await fetch(`${API_BASE}/clients`, { headers: getHeaders() });
             if (!res.ok) throw new Error('Failed to load clients');
             const data = await res.json();
             const clients = data.clients || [];
+            
+            // Update access panel dropdown
+            const accessSelect = document.getElementById('accessClientSelect');
+            if (accessSelect) {
+                accessSelect.innerHTML = '<option value="">-- Select a client --</option>';
+                clients.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.name;
+                    accessSelect.appendChild(opt);
+                });
+            }
+            
             const rows = clients.map(c => `
                 <tr>
-                    <td title="${c.id}">${c.id.substring(0, 8)}...</td>
+                    <td title="${c.id}"><code style="font-size:11px;background:var(--panel);padding:2px 6px;border-radius:4px;">${c.id.substring(0, 8)}...</code></td>
                     <td><strong>${c.name}</strong></td>
-                    <td>${c.aliases?.join(', ') || '-'}</td>
+                    <td>${c.aliases?.join(', ') || '<span class="muted">-</span>'}</td>
                     <td>${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
                     <td>
-                        <button class="btn secondary delete-client-btn" data-id="${c.id}" data-name="${c.name}" style="padding:5px 10px;font-size:12px;color:#ef4444;">
-                            <i class="fa fa-trash"></i> Delete
+                        ${isAdmin ? `
+                        <button class="btn secondary view-users-btn" data-id="${c.id}" data-name="${c.name}" style="padding:5px 10px;font-size:12px;margin-right:4px;">
+                            <i class="fa fa-users"></i>
                         </button>
+                        <button class="btn secondary delete-client-btn" data-id="${c.id}" data-name="${c.name}" style="padding:5px 10px;font-size:12px;color:#ef4444;">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                        ` : '-'}
                     </td>
                 </tr>
             `).join('');
+            
             document.getElementById('clientList').innerHTML = `
-                <h3>Clients (${clients.length})</h3>
+                <h3><i class="fa fa-building" style="margin-right:8px;"></i>Clients (${clients.length})</h3>
                 <table class="table">
                     <thead><tr><th>ID</th><th>Name</th><th>Aliases</th><th>Created</th><th>Actions</th></tr></thead>
                     <tbody>${rows || '<tr><td colspan="5" class="muted">No clients</td></tr>'}</tbody>
                 </table>
             `;
             
-            document.querySelectorAll('.delete-client-btn').forEach(btn => {
-                btn.addEventListener('click', async (e) => {
-                    const clientId = btn.dataset.id;
-                    const clientName = btn.dataset.name;
-                    if (!confirm(`Delete client "${clientName}"?\n\nThis will NOT delete their documents. To also delete documents, use delete_documents=true parameter.`)) return;
-                    
-                    try {
-                        const res = await fetch(`${API_BASE}/clients/${clientId}?delete_documents=false`, {
-                            method: 'DELETE',
-                            headers: getHeaders(),
-                        });
-                        if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
-                        loadClientList();
-                    } catch (err) {
-                        alert('Delete failed: ' + err.message);
-                    }
+            if (isAdmin) {
+                document.querySelectorAll('.delete-client-btn').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        const clientId = btn.dataset.id;
+                        const clientName = btn.dataset.name;
+                        if (!confirm(`Delete client "${clientName}"?\n\nThis will NOT delete their documents. To also delete documents, use delete_documents=true parameter.`)) return;
+                        
+                        try {
+                            const res = await fetch(`${API_BASE}/clients/${clientId}?delete_documents=false`, {
+                                method: 'DELETE',
+                                headers: getHeaders(),
+                            });
+                            if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+                            loadClientList();
+                        } catch (err) {
+                            alert('Delete failed: ' + err.message);
+                        }
+                    });
                 });
-            });
+                
+                document.querySelectorAll('.view-users-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const clientId = btn.dataset.id;
+                        document.getElementById('accessClientSelect').value = clientId;
+                        loadClientUsersPreview();
+                        // Scroll to access panel
+                        document.getElementById('userAccessPanel').scrollIntoView({ behavior: 'smooth' });
+                    });
+                });
+            }
         } catch (err) {
             document.getElementById('clientList').innerHTML = `<h3>Clients</h3><div class="muted badge-error">${err.message}</div>`;
         }

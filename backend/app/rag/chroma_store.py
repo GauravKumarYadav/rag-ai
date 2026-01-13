@@ -7,16 +7,32 @@ ChromaDB is a lightweight, embedded vector database ideal for:
 - Privacy-focused applications (all data stays local)
 
 For production with high availability, consider Pinecone, Weaviate, or Qdrant.
+
+Embedding Fingerprinting:
+- Stores embedding configuration fingerprint with each collection
+- Verifies fingerprint on startup to detect model changes
+- Prevents silent degradation from embedding mismatches
 """
 
+import logging
 import re
 from typing import Any, Dict, List, Optional
 
 import chromadb
 
 from app.rag.base import VectorStoreBase, ClientVectorStoreBase, VectorStoreConfig
-from app.rag.embeddings import get_embedding_function
+from app.rag.embeddings import get_embedding_function, get_embedding_fingerprint, verify_embedding_fingerprint
 from app.models.schemas import RetrievalHit
+
+logger = logging.getLogger(__name__)
+
+# Metadata key for storing embedding fingerprint
+EMBEDDING_FINGERPRINT_KEY = "_embedding_fingerprint"
+
+
+class EmbeddingMismatchError(Exception):
+    """Raised when embedding configuration doesn't match stored index."""
+    pass
 
 
 def sanitize_collection_name(name: str) -> str:
@@ -41,11 +57,13 @@ class ChromaVectorStore(VectorStoreBase):
     ChromaDB implementation of the vector store.
     
     Uses persistent storage and automatic embedding generation.
+    Includes embedding fingerprint verification for consistency.
     """
     
-    def __init__(self, config: VectorStoreConfig) -> None:
+    def __init__(self, config: VectorStoreConfig, verify_fingerprint: bool = True) -> None:
         self.config = config
         self.path = config.path
+        self._verify_fingerprint = verify_fingerprint
         
         # Initialize ChromaDB client
         if config.url:
@@ -70,6 +88,7 @@ class ChromaVectorStore(VectorStoreBase):
             self.client = chromadb.PersistentClient(path=self.path)
         
         self.embedding_fn = get_embedding_function()
+        self._current_fingerprint = get_embedding_fingerprint()
         
         # Collection names with optional prefix
         prefix = config.collection_prefix
@@ -84,6 +103,10 @@ class ChromaVectorStore(VectorStoreBase):
             name=memories_name, 
             embedding_function=self.embedding_fn
         )
+        
+        # Verify embedding fingerprint if collection has data
+        if verify_fingerprint and self.docs.count() > 0:
+            self._verify_embedding_consistency()
     
     def add_documents(
         self,
@@ -177,6 +200,57 @@ class ChromaVectorStore(VectorStoreBase):
             return True
         except Exception:
             return False
+    
+    def _verify_embedding_consistency(self) -> None:
+        """
+        Verify that the current embedding config matches stored documents.
+        
+        Raises EmbeddingMismatchError if there's a mismatch.
+        """
+        from app.core.metrics import record_embedding_mismatch
+        
+        # Sample a document to check its fingerprint
+        try:
+            sample = self.docs.get(limit=1, include=["metadatas"])
+            if sample["ids"] and sample["metadatas"]:
+                stored_fp = sample["metadatas"][0].get("embedding_fingerprint")
+                if stored_fp and stored_fp != self._current_fingerprint:
+                    record_embedding_mismatch()
+                    logger.warning(
+                        f"Embedding configuration mismatch detected! "
+                        f"Stored: {stored_fp}, Current: {self._current_fingerprint}. "
+                        f"Reindexing recommended."
+                    )
+                    # Don't raise by default - just warn
+                    # Uncomment below to enforce strict matching:
+                    # raise EmbeddingMismatchError(
+                    #     f"Embedding config changed: {stored_fp} -> {self._current_fingerprint}. "
+                    #     "Reindex required."
+                    # )
+        except Exception as e:
+            logger.debug(f"Could not verify embedding fingerprint: {e}")
+    
+    def get_stored_fingerprint(self) -> Optional[str]:
+        """Get the embedding fingerprint stored with documents."""
+        try:
+            sample = self.docs.get(limit=1, include=["metadatas"])
+            if sample["ids"] and sample["metadatas"]:
+                return sample["metadatas"][0].get("embedding_fingerprint")
+        except Exception:
+            pass
+        return None
+    
+    def check_fingerprint_match(self) -> bool:
+        """
+        Check if stored fingerprint matches current config.
+        
+        Returns:
+            True if match (or no stored data), False if mismatch
+        """
+        stored = self.get_stored_fingerprint()
+        if not stored:
+            return True  # No data to compare
+        return verify_embedding_fingerprint(stored)
 
 
 class ChromaClientVectorStore(ClientVectorStoreBase):
@@ -184,12 +258,14 @@ class ChromaClientVectorStore(ClientVectorStoreBase):
     Per-client isolated ChromaDB vector store.
     
     Each client gets separate collections for complete data isolation.
+    Includes embedding fingerprint verification for consistency.
     """
     
-    def __init__(self, config: VectorStoreConfig, client_id: str) -> None:
+    def __init__(self, config: VectorStoreConfig, client_id: str, verify_fingerprint: bool = True) -> None:
         self.client_id = client_id
         self.config = config
         self.path = config.path
+        self._verify_fingerprint = verify_fingerprint
         
         # Initialize ChromaDB client
         if config.url:
@@ -212,6 +288,7 @@ class ChromaClientVectorStore(ClientVectorStoreBase):
             self.chroma_client = chromadb.PersistentClient(path=self.path)
         
         self.embedding_fn = get_embedding_function()
+        self._current_fingerprint = get_embedding_fingerprint()
         
         # Create client-specific collection names
         safe_id = sanitize_collection_name(client_id)
@@ -227,6 +304,10 @@ class ChromaClientVectorStore(ClientVectorStoreBase):
             name=self.memories_name, 
             embedding_function=self.embedding_fn
         )
+        
+        # Verify embedding fingerprint if collection has data
+        if verify_fingerprint and self.docs.count() > 0:
+            self._verify_embedding_consistency()
     
     def add_documents(
         self,
@@ -358,3 +439,47 @@ class ChromaClientVectorStore(ClientVectorStoreBase):
                 "metadatas": memories_data.get("metadatas", []),
             },
         }
+    
+    def _verify_embedding_consistency(self) -> None:
+        """
+        Verify that the current embedding config matches stored documents.
+        
+        Logs a warning if there's a mismatch.
+        """
+        from app.core.metrics import record_embedding_mismatch
+        
+        try:
+            sample = self.docs.get(limit=1, include=["metadatas"])
+            if sample["ids"] and sample["metadatas"]:
+                stored_fp = sample["metadatas"][0].get("embedding_fingerprint")
+                if stored_fp and stored_fp != self._current_fingerprint:
+                    record_embedding_mismatch()
+                    logger.warning(
+                        f"Embedding mismatch for client {self.client_id}! "
+                        f"Stored: {stored_fp}, Current: {self._current_fingerprint}. "
+                        f"Reindexing recommended."
+                    )
+        except Exception as e:
+            logger.debug(f"Could not verify embedding fingerprint for client {self.client_id}: {e}")
+    
+    def get_stored_fingerprint(self) -> Optional[str]:
+        """Get the embedding fingerprint stored with documents."""
+        try:
+            sample = self.docs.get(limit=1, include=["metadatas"])
+            if sample["ids"] and sample["metadatas"]:
+                return sample["metadatas"][0].get("embedding_fingerprint")
+        except Exception:
+            pass
+        return None
+    
+    def check_fingerprint_match(self) -> bool:
+        """
+        Check if stored fingerprint matches current config.
+        
+        Returns:
+            True if match (or no stored data), False if mismatch
+        """
+        stored = self.get_stored_fingerprint()
+        if not stored:
+            return True
+        return verify_embedding_fingerprint(stored)

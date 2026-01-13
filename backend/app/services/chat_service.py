@@ -4,11 +4,14 @@ Chat Service - Optimized for Small Model RAG.
 This service implements the full optimized RAG pipeline:
 1. State management (structured state instead of raw history)
 2. Intent classification and query rewriting
-3. Reranking with MMR diversity
-4. Context compression to dense bullets
-5. Evidence validation and guardrails
-6. Token budgeting
-7. Sliding window memory with episodic extraction
+3. Hybrid search (BM25 + Vector) with reranking + MMR
+4. Knowledge graph expansion for entity disambiguation
+5. Context compression to dense bullets
+6. Evidence validation and guardrails
+7. Citation enforcement and verification
+8. Token budgeting
+9. Sliding window memory with episodic extraction
+10. Answer verification for hallucination detection
 """
 
 import logging
@@ -49,6 +52,11 @@ from app.services.query_processor import (
     get_query_processor,
 )
 from app.services.token_budgeter import TokenBudgeter, get_token_budgeter
+
+# New components for enhanced RAG
+from app.rag.hybrid_search import HybridSearch, get_hybrid_search
+from app.services.citation_extractor import CitationExtractor, get_citation_extractor
+from app.services.answer_verifier import AnswerVerifier, get_answer_verifier
 
 logger = logging.getLogger(__name__)
 
@@ -97,16 +105,18 @@ class ChatService:
     """
     Chat service with small model RAG optimization.
     
-    New optimized pipeline:
+    Enhanced optimized pipeline:
     1. Load/build state block from conversation state
     2. Classify intent and rewrite query
-    3. Retrieve with reranking + MMR diversity
-    4. Compress context to dense bullet facts
-    5. Validate evidence and add guardrails
-    6. Fit to token budget
-    7. Build optimized prompt
-    8. Generate response
-    9. Update state and memory
+    3. Hybrid search (BM25 + Vector) with reranking + MMR
+    4. Knowledge graph expansion (if enabled)
+    5. Compress context to dense bullet facts
+    6. Validate evidence and add guardrails
+    7. Fit to token budget
+    8. Build optimized prompt with citation enforcement
+    9. Generate response
+    10. Verify answer against context
+    11. Update state and memory
     
     Falls back to legacy pipeline if optimization disabled.
     """
@@ -124,6 +134,8 @@ class ChatService:
         context_compressor: Optional[ContextCompressor] = None,
         evidence_validator: Optional[EvidenceValidator] = None,
         token_budgeter: Optional[TokenBudgeter] = None,
+        citation_extractor: Optional[CitationExtractor] = None,
+        answer_verifier: Optional[AnswerVerifier] = None,
         use_optimized_pipeline: bool = True,
     ) -> None:
         self.lm_client = lm_client
@@ -139,6 +151,11 @@ class ChatService:
         self.context_compressor = context_compressor or get_context_compressor_with_llm(lm_client)
         self.evidence_validator = evidence_validator or get_evidence_validator_with_llm(lm_client)
         self.token_budgeter = token_budgeter or get_token_budgeter()
+        
+        # New components for enhanced RAG quality
+        self.citation_extractor = citation_extractor or get_citation_extractor()
+        self.answer_verifier = answer_verifier or get_answer_verifier(lm_client)
+        
         self.use_optimized_pipeline = use_optimized_pipeline
 
     async def _build_system_context(self) -> str:
@@ -204,33 +221,53 @@ class ChatService:
         return None
 
     async def handle_chat(
-        self, request: ChatRequest, background_tasks: BackgroundTasks | None = None
+        self, 
+        request: ChatRequest, 
+        background_tasks: BackgroundTasks | None = None,
+        allowed_clients: Optional[set] = None,
     ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
         """
         Handle chat request with optimized or legacy pipeline.
+        
+        Args:
+            request: The chat request
+            background_tasks: Optional background tasks for async operations
+            allowed_clients: Set of client IDs the user can access (for authorization)
         """
         if self.use_optimized_pipeline:
-            return await self._handle_chat_optimized(request, background_tasks)
+            return await self._handle_chat_optimized(request, background_tasks, allowed_clients)
         else:
-            return await self._handle_chat_legacy(request, background_tasks)
+            return await self._handle_chat_legacy(request, background_tasks, allowed_clients)
 
     async def _handle_chat_optimized(
-        self, request: ChatRequest, background_tasks: BackgroundTasks | None = None
+        self, 
+        request: ChatRequest, 
+        background_tasks: BackgroundTasks | None = None,
+        allowed_clients: Optional[set] = None,
     ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
         """
-        Optimized chat pipeline for small models.
+        Enhanced optimized chat pipeline for small models.
         
         Steps:
         1. Load conversation state
         2. Process query (intent + rewrite)
-        3. Retrieve with reranking + MMR
-        4. Compress to bullets
-        5. Validate evidence
-        6. Fit to token budget
-        7. Build optimized prompt
-        8. Generate response
-        9. Update state
+        3. Hybrid search (BM25 + Vector) with reranking + MMR
+        4. Knowledge graph expansion (optional)
+        5. Compress to bullets
+        6. Validate evidence
+        7. Fit to token budget
+        8. Build optimized prompt with citation enforcement
+        9. Generate response
+        10. Verify answer against context
+        11. Update state and memory
         """
+        from app.core.metrics import (
+            record_cross_client_filter, 
+            record_stage_executed,
+            record_stage_skipped,
+            record_intent,
+        )
+        
         conversation_id = request.conversation_id
         
         # Step 1: Load conversation state
@@ -240,6 +277,7 @@ class ChatService:
         
         # Step 2: Process query (intent classification + rewriting)
         query_result = await self.query_processor.process(request.message, state)
+        record_intent(query_result.intent.value)
         logger.debug(f"[Optimized] Intent: {query_result.intent.value}, needs_retrieval: {query_result.needs_retrieval}")
         
         # Initialize for non-retrieval path
@@ -248,59 +286,116 @@ class ChatService:
         evidence_assessment: Optional[EvidenceAssessment] = None
         evidence_disclaimer: Optional[str] = None
         
-        # Step 3-6: Retrieval pipeline (only if needed)
+        # Use the client_id from request (already validated by route)
+        # Default to 'global' if not specified
+        client_id = request.client_id or "global"
+        
+        # =================================================================
+        # INTENT-BASED GATING: Skip retrieval for chitchat
+        # =================================================================
+        if query_result.intent == Intent.CHITCHAT:
+            record_stage_skipped("retrieval", "chitchat")
+            logger.info(f"[Gating] Skipping retrieval - chitchat intent detected")
+            
+            # Generate response without retrieval
+            return await self._generate_without_retrieval(
+                request=request,
+                state=state,
+                background_tasks=background_tasks,
+            )
+        
+        # =================================================================
+        # FOLLOW-UP GATING: Only retrieve if references exist
+        # =================================================================
+        if query_result.intent == Intent.FOLLOW_UP and not query_result.resolved_references:
+            record_stage_skipped("retrieval", "no_refs")
+            logger.info(f"[Gating] Skipping retrieval - follow-up without resolvable references")
+            
+            # Generate from state only
+            return await self._generate_from_state(
+                request=request,
+                state=state,
+                background_tasks=background_tasks,
+            )
+        
+        # Step 3-7: Retrieval pipeline (only if needed)
         if query_result.needs_retrieval and request.top_k > 0:
-            # Detect client context
-            client_id = request.client_id
-            if not client_id:
-                client_id = await self._detect_client(request.message, conversation_id)
+            record_stage_executed("retrieval")
+            
+            # Record that we're applying client filter
+            record_cross_client_filter(client_id)
             
             # Update state with client context
-            if client_id:
+            if client_id and client_id != "global":
                 client = await self.client_store.get(client_id)
                 if client:
                     await self.state_manager.set_client_context(conversation_id, client.name)
             
-            # Step 3: Retrieve with reranking + MMR
+            # Step 3: Hybrid Search (BM25 + Vector) with reranking + MMR
+            # ALWAYS filter by client_id - this is the security boundary
             search_query = query_result.search_query
             
-            # Global retrieval with optimized pipeline
-            retrieved = self.retriever.search_with_mmr(
-                query=search_query,
-                top_k=settings.rag.rerank_top_k,
-                fetch_k=settings.rag.initial_fetch_k,
-                metadata_filters=request.metadata_filters,
-            )
-            logger.debug(f"[Optimized] Global retrieval: {len(retrieved)} docs")
-            
-            # Client-specific retrieval
-            if client_id:
-                client_store = get_client_vector_store(client_id)
-                if client_store.docs.count() > 0:
-                    client_hits = client_store.query(
+            # Use hybrid search if BM25 is enabled
+            if settings.rag.bm25_enabled:
+                # Client-specific hybrid search with hard client filter
+                try:
+                    hybrid = get_hybrid_search(client_id=client_id)
+                    retrieved = hybrid.search(
                         query=search_query,
                         top_k=settings.rag.rerank_top_k,
-                        collection="documents"
+                        fetch_k=settings.rag.initial_fetch_k,
+                        use_reranker=settings.rag.reranker_enabled,
                     )
-                    # Prepend client-specific results
-                    retrieved = client_hits + retrieved
-                    logger.debug(f"[Optimized] With client docs: {len(retrieved)} total")
+                    logger.debug(f"[Optimized] Hybrid search for client {client_id}: {len(retrieved)} docs")
+                except Exception as e:
+                    logger.warning(f"Hybrid search failed, falling back: {e}")
+                    retrieved = self.retriever.search_with_client_filter(
+                        query=search_query,
+                        client_id=client_id,
+                        top_k=settings.rag.rerank_top_k,
+                        fetch_k=settings.rag.initial_fetch_k,
+                        metadata_filters=request.metadata_filters,
+                    )
             else:
-                # Search all clients
-                all_clients = await self.client_store.list_all()
-                for client in all_clients:
-                    client_store = get_client_vector_store(client.id)
-                    if client_store.docs.count() > 0:
-                        hits = client_store.query(
-                            query=search_query,
-                            top_k=settings.rag.rerank_top_k,
-                            collection="documents"
-                        )
-                        for hit in hits:
-                            hit.metadata["client_name"] = client.name
-                        retrieved.extend(hits)
+                # Vector retrieval with client filter
+                retrieved = self.retriever.search_with_client_filter(
+                    query=search_query,
+                    client_id=client_id,
+                    top_k=settings.rag.rerank_top_k,
+                    fetch_k=settings.rag.initial_fetch_k,
+                    metadata_filters=request.metadata_filters,
+                )
+                logger.debug(f"[Optimized] Vector retrieval for client {client_id}: {len(retrieved)} docs")
             
-            # Step 4: Compress to bullets
+            # Step 4: Knowledge Graph Expansion (with gating)
+            # Only expand KG when initial retrieval is weak
+            if settings.rag.knowledge_graph_enabled and client_id and retrieved:
+                should_expand_kg = self._should_expand_kg(retrieved, query_result)
+                
+                if should_expand_kg:
+                    try:
+                        from app.knowledge.graph_query import get_graph_query_expander
+                        from app.core.metrics import record_kg_expansion
+                        
+                        record_kg_expansion("low_recall")
+                        record_stage_executed("kg_expansion")
+                        
+                        kg_expander = get_graph_query_expander()
+                        _, expansion = kg_expander.enrich_retrieval(search_query, retrieved, client_id)
+                        
+                        # Log KG expansion info
+                        if expansion.identified_entities:
+                            logger.debug(
+                                f"[Optimized] KG identified {len(expansion.identified_entities)} entities, "
+                                f"found {len(expansion.related_entities)} related"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Knowledge graph expansion failed: {e}")
+                else:
+                    record_stage_skipped("kg_expansion", "good_recall")
+                    logger.debug("[Gating] Skipped KG expansion - good initial recall")
+            
+            # Step 5: Compress to bullets
             if retrieved:
                 compressed_facts = await self.context_compressor.compress(
                     hits=retrieved,
@@ -310,7 +405,7 @@ class ChatService:
                 )
                 logger.debug(f"[Optimized] Compressed to {len(compressed_facts)} facts")
             
-            # Step 5: Validate evidence
+            # Step 6: Validate evidence
             evidence_assessment = self.evidence_validator.assess_evidence(retrieved)
             if evidence_assessment.disclaimer:
                 evidence_disclaimer = evidence_assessment.disclaimer
@@ -326,7 +421,7 @@ class ChatService:
                     elif contradiction_warning:
                         evidence_disclaimer = contradiction_warning
             
-            # Step 6: Fit to token budget
+            # Step 7: Fit to token budget
             if compressed_facts:
                 budget_result = self.token_budgeter.fit_to_budget(compressed_facts)
                 compressed_facts = budget_result.facts
@@ -343,7 +438,9 @@ class ChatService:
         # Get provider type
         provider = getattr(self.lm_client, "provider", "ollama")
         
-        # Step 7: Build optimized prompt
+        # Step 8: Build optimized prompt with citation enforcement
+        enforce_citations = settings.rag.citation_required and compressed_facts
+        
         messages = build_optimized_messages(
             user_text=request.message,
             state_block=state_block if state_block else None,
@@ -355,64 +452,85 @@ class ChatService:
             images=request.images if request.images else None,
             system_prompt=request.system_prompt,
             provider=provider,
+            enforce_citations=enforce_citations,
         )
         
-        # Step 8: Generate response
+        # Step 9: Generate response
         result = await self.lm_client.chat(messages, stream=request.stream)
         
         if request.stream:
             return self._wrap_stream_optimized(request, result, retrieved, background_tasks), retrieved
         
-        # Step 9: Update state and memory
         text = result
+        
+        # Step 10: Verify answer against context (for factual queries)
+        if settings.rag.verification_enabled and retrieved and query_result.intent == Intent.QUESTION:
+            try:
+                verification = await self.answer_verifier.verify(text, retrieved)
+                
+                # Add disclaimer if needed
+                if verification.disclaimer:
+                    text = text + "\n\n" + verification.disclaimer
+                
+                # Log verification results
+                if verification.unsupported_claims:
+                    logger.warning(
+                        f"[Optimized] Unsupported claims detected: {verification.unsupported_claims[:2]}"
+                    )
+                
+                # Check citation coverage
+                if settings.rag.citation_required:
+                    passes, citation_analysis = self.citation_extractor.passes_coverage_threshold(text, retrieved)
+                    if not passes:
+                        coverage_warning = self.citation_extractor.format_coverage_warning(citation_analysis)
+                        if coverage_warning:
+                            text = text + "\n\n" + coverage_warning
+                            logger.debug(f"[Optimized] Citation coverage: {citation_analysis.coverage_ratio:.1%}")
+                
+            except Exception as e:
+                logger.error(f"Answer verification failed: {e}")
+        
+        # Step 11: Update state and memory
         await self._post_turn_optimized(request, text, background_tasks)
         return text, retrieved
 
     async def _handle_chat_legacy(
-        self, request: ChatRequest, background_tasks: BackgroundTasks | None = None
+        self, 
+        request: ChatRequest, 
+        background_tasks: BackgroundTasks | None = None,
+        allowed_clients: Optional[set] = None,
     ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
         """
         Legacy chat pipeline (backward compatible).
+        
+        Now enforces client_id filtering for security.
         """
+        from app.core.metrics import record_cross_client_filter, record_stage_executed
+        
         history = self.session_buffer.get(request.conversation_id)
         
         needs_rag = _needs_rag_retrieval(request.message)
         logger.debug(f"[Legacy] Message needs RAG: {needs_rag}")
         
-        client_id = request.client_id
-        if not client_id and needs_rag:
-            client_id = await self._detect_client(request.message, request.conversation_id)
+        # Use client_id from request (already validated by route)
+        # Default to 'global' if not specified
+        client_id = request.client_id or "global"
         
         retrieved = []
         memory_hits = []
         
         if needs_rag and request.top_k > 0:
-            retrieved = self.retriever.search(
-                query=request.message, top_k=request.top_k, metadata_filters=request.metadata_filters
-            )
+            record_stage_executed("retrieval")
+            record_cross_client_filter(client_id)
             
-            if client_id:
-                client_store = get_client_vector_store(client_id)
-                client_hits = client_store.query(
-                    query=request.message, top_k=request.top_k, collection="documents"
-                )
-                retrieved = client_hits + retrieved
-            else:
-                all_clients = await self.client_store.list_all()
-                all_client_hits = []
-                for client in all_clients:
-                    client_store = get_client_vector_store(client.id)
-                    if client_store.docs.count() > 0:
-                        hits = client_store.query(
-                            query=request.message, top_k=request.top_k, collection="documents"
-                        )
-                        for hit in hits:
-                            hit.metadata["client_name"] = client.name
-                        all_client_hits.extend(hits)
-                
-                if all_client_hits:
-                    all_client_hits.sort(key=lambda x: x.score)
-                    retrieved = all_client_hits[:request.top_k] + retrieved
+            # ALWAYS search with client filter - security boundary
+            client_store = get_client_vector_store(client_id)
+            retrieved = client_store.query(
+                query=request.message, 
+                top_k=request.top_k, 
+                collection="documents"
+            )
+            logger.debug(f"[Legacy] Retrieved {len(retrieved)} docs for client {client_id}")
             
             memory_hits = self.long_term.retrieve(query=request.message)
         
@@ -536,6 +654,150 @@ class ChatService:
                 logger.debug(f"Generated running summary for {conversation_id}")
         except Exception as e:
             logger.error(f"Failed to generate running summary: {e}")
+    
+    async def _generate_without_retrieval(
+        self,
+        request: ChatRequest,
+        state: ConversationState,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
+        """
+        Generate response without RAG retrieval.
+        
+        Used for chitchat and queries that don't need document context.
+        """
+        logger.debug(f"[Gating] Generating response without retrieval")
+        
+        history = self.session_buffer.get(request.conversation_id)
+        
+        # Build simple conversational prompt
+        system_prompt = request.system_prompt or ""
+        if not system_prompt:
+            system_prompt = (
+                "You are a helpful assistant. Be concise and friendly. "
+                "If you don't have specific information about documents, "
+                "be honest about what you don't know."
+            )
+        
+        provider = getattr(self.lm_client, "provider", "ollama")
+        
+        messages = build_messages(
+            system_prompt=system_prompt,
+            user_text=request.message,
+            images=request.images,
+            retrieved_docs=[],  # No retrieved docs
+            memory_hits=[],
+            session_messages=history[-6:],  # Limited history
+            provider=provider,
+        )
+        
+        result = await self.lm_client.chat(messages, stream=request.stream)
+        
+        if request.stream:
+            return self._wrap_stream_optimized(request, result, [], background_tasks), []
+        
+        await self._post_turn_optimized(request, result, background_tasks)
+        return result, []
+    
+    async def _generate_from_state(
+        self,
+        request: ChatRequest,
+        state: ConversationState,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
+        """
+        Generate response using conversation state only (no new retrieval).
+        
+        Used for follow-ups that reference previous context already in state.
+        """
+        logger.debug(f"[Gating] Generating response from state only")
+        
+        history = self.session_buffer.get(request.conversation_id)
+        state_block = self.state_manager.build_state_block(state)
+        
+        # Build prompt with state context but no new retrieval
+        system_prompt = request.system_prompt or ""
+        if not system_prompt:
+            system_prompt = (
+                "You are a helpful assistant. Answer based on the conversation context "
+                "provided. If you need to refer to documents, use information already "
+                "discussed in the conversation."
+            )
+        
+        # Add state context to system prompt
+        if state_block:
+            system_prompt = f"{system_prompt}\n\nConversation context:\n{state_block}"
+        
+        provider = getattr(self.lm_client, "provider", "ollama")
+        
+        messages = build_messages(
+            system_prompt=system_prompt,
+            user_text=request.message,
+            images=request.images,
+            retrieved_docs=[],  # No new retrieval
+            memory_hits=[],
+            session_messages=history,
+            provider=provider,
+        )
+        
+        result = await self.lm_client.chat(messages, stream=request.stream)
+        
+        if request.stream:
+            return self._wrap_stream_optimized(request, result, [], background_tasks), []
+        
+        await self._post_turn_optimized(request, result, background_tasks)
+        return result, []
+    
+    def _should_expand_kg(
+        self, 
+        retrieved: List[RetrievalHit], 
+        query_result: QueryResult,
+    ) -> bool:
+        """
+        Determine if Knowledge Graph expansion should be triggered.
+        
+        Expand KG when:
+        - Too few results (< 2)
+        - Low confidence scores (top result score > 0.5 for distance metrics)
+        - Query intent is exploratory
+        
+        Don't expand when:
+        - Good recall (3+ high-confidence results)
+        - Follow-up query (usually doesn't need expansion)
+        - High confidence retrieval
+        
+        Args:
+            retrieved: Retrieved hits from initial search
+            query_result: Query processing result with intent
+            
+        Returns:
+            True if KG expansion should be triggered
+        """
+        # Too few results - definitely expand
+        if len(retrieved) < 2:
+            return True
+        
+        # Follow-ups usually don't need KG expansion
+        if query_result.intent == Intent.FOLLOW_UP:
+            return False
+        
+        # Check confidence of top results
+        if retrieved:
+            top_score = retrieved[0].score
+            
+            # If using distance metrics (lower is better)
+            # Expand if top result has low confidence (high distance)
+            if top_score > 0.5:
+                return True
+            
+            # If we have 3+ results with good scores, skip expansion
+            if len(retrieved) >= 3:
+                third_score = retrieved[2].score
+                if third_score < 0.4:  # Good confidence for top 3
+                    return False
+        
+        # Default: don't expand (save resources)
+        return False
 
     def _should_summarize(self, conversation_id: str) -> bool:
         """Check if conversation needs summarization."""
@@ -601,5 +863,7 @@ def get_chat_service(use_optimized: bool = True) -> ChatService:
         context_compressor=get_context_compressor_with_llm(lm_client),
         evidence_validator=get_evidence_validator_with_llm(lm_client),
         token_budgeter=get_token_budgeter(),
+        citation_extractor=get_citation_extractor(),
+        answer_verifier=get_answer_verifier(lm_client),
         use_optimized_pipeline=use_optimized,
     )

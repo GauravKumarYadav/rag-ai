@@ -5,9 +5,12 @@ Supports multiple embedding providers:
 - LMStudio (OpenAI-compatible API)
 - Ollama (native embeddings API)
 - Embedding Service (microservices mode)
+
+Includes embedding fingerprinting for consistency verification.
 """
 
 import os
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import List, Optional
 
@@ -16,6 +19,86 @@ import numpy as np
 from chromadb import EmbeddingFunction, Documents, Embeddings
 
 from app.config import settings
+
+
+# =============================================================================
+# Embedding Fingerprint
+# =============================================================================
+
+@dataclass
+class EmbeddingFingerprint:
+    """
+    Fingerprint for tracking embedding model configuration.
+    
+    Used to detect when the embedding model changes, which would
+    require re-indexing documents for consistency.
+    """
+    provider: str          # "ollama", "lmstudio", "embedding-service"
+    model: str             # "nomic-embed-text"
+    dimension: int         # 768
+    normalize: bool        # True
+    version: str = "1.0"   # Configuration version
+    
+    def to_string(self) -> str:
+        """Get fingerprint as a string for storage."""
+        return f"{self.provider}:{self.model}:{self.dimension}:{self.normalize}:{self.version}"
+    
+    @classmethod
+    def from_string(cls, s: str) -> "EmbeddingFingerprint":
+        """Parse fingerprint from stored string."""
+        parts = s.split(":")
+        if len(parts) < 4:
+            raise ValueError(f"Invalid fingerprint format: {s}")
+        
+        return cls(
+            provider=parts[0],
+            model=parts[1],
+            dimension=int(parts[2]),
+            normalize=parts[3].lower() == "true",
+            version=parts[4] if len(parts) > 4 else "1.0",
+        )
+    
+    def __eq__(self, other) -> bool:
+        if isinstance(other, str):
+            return self.to_string() == other
+        if isinstance(other, EmbeddingFingerprint):
+            return self.to_string() == other.to_string()
+        return False
+    
+    def __hash__(self) -> int:
+        return hash(self.to_string())
+
+
+def get_embedding_fingerprint() -> str:
+    """
+    Get the current embedding configuration fingerprint.
+    
+    This is stored with each chunk to detect when re-indexing is needed.
+    
+    Returns:
+        Fingerprint string like "ollama:nomic-embed-text:768:true:1.0"
+    """
+    fp = EmbeddingFingerprint(
+        provider=settings.rag.embedding_provider,
+        model=settings.rag.embedding_model,
+        dimension=settings.rag.embedding_dimension,
+        normalize=settings.rag.embedding_normalize,
+    )
+    return fp.to_string()
+
+
+def verify_embedding_fingerprint(stored_fingerprint: str) -> bool:
+    """
+    Verify that the stored fingerprint matches current configuration.
+    
+    Args:
+        stored_fingerprint: The fingerprint stored with indexed documents
+        
+    Returns:
+        True if fingerprints match, False if re-indexing is needed
+    """
+    current = get_embedding_fingerprint()
+    return current == stored_fingerprint
 
 
 class LMStudioEmbeddingFunction(EmbeddingFunction[Documents]):

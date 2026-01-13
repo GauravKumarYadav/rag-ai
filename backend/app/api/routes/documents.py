@@ -2,15 +2,24 @@ import base64
 import io
 import tempfile
 import os
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Set
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from app.config import settings
 from app.rag.vector_store import get_vector_store, get_client_vector_store
 from app.models.client import get_client_store
 from app.dependencies import get_current_user
+from app.auth.dependencies import get_allowed_clients, GLOBAL_CLIENT_ID
 from app.processors import ProcessorRegistry, extract_text
+from app.processors.chunking import (
+    chunk_document,
+    chunk_text_simple,
+    generate_doc_id,
+    Chunk,
+)
 
 
 router = APIRouter()
@@ -20,6 +29,7 @@ class DocumentUploadResponse(BaseModel):
     message: str
     document_count: int
     chunk_count: int
+    chunk_ids: Optional[List[str]] = None
 
 
 class DocumentSearchRequest(BaseModel):
@@ -34,21 +44,8 @@ class DocumentSearchResponse(BaseModel):
 
 
 def chunk_text(text: str, max_chars: int = 1200, overlap: int = 200) -> List[str]:
-    """Split text into overlapping chunks."""
-    if max_chars <= 0:
-        return []
-    stride = max(max_chars - overlap, 1)
-    chunks: List[str] = []
-    start = 0
-    length = len(text)
-    while start < length:
-        end = min(start + max_chars, length)
-        chunk = text[start:end]
-        chunks.append(chunk.strip())
-        if end == length:
-            break
-        start += stride
-    return [c for c in chunks if c]
+    """Split text into overlapping chunks. Legacy wrapper."""
+    return chunk_text_simple(text, max_chars, overlap)
 
 
 def extract_text_with_docling(file_path: str, fast_mode: bool = False) -> str:
@@ -122,13 +119,14 @@ def extract_text_from_pdf_pypdf(content: bytes) -> str:
 @router.post("/upload", response_model=DocumentUploadResponse, summary="Upload documents")
 async def upload_documents(
     files: List[UploadFile] = File(...),
-    chunk_size: int = Form(1200),
-    chunk_overlap: int = Form(200),
+    chunk_size: int = Form(None),  # Use settings if not provided
+    chunk_overlap: int = Form(None),  # Use settings if not provided
     use_ocr: bool = Form(True),
     fast_mode: bool = Form(False),
     client_id: Optional[str] = Form(None),
     client_name: Optional[str] = Form(None),
     current_user: Dict[str, Any] = Depends(get_current_user),
+    allowed_clients: Set[str] = Depends(get_allowed_clients),
 ):
     """
     Upload documents and add them to the vector store.
@@ -143,7 +141,15 @@ async def upload_documents(
     If client_id is provided, documents are stored in a client-specific collection.
     If client_name is provided without client_id, a new client is created.
     Otherwise, documents go to the global document store.
+    
+    Features:
+    - Content-hash chunk IDs for deterministic processing
+    - Rich metadata including page numbers and section headings
+    - Client isolation enforced
     """
+    from app.core.metrics import record_chunks_created
+    from app.rag.embeddings import get_embedding_fingerprint
+    
     # Handle client creation/lookup
     actual_client_id = client_id
     if client_name and not client_id:
@@ -158,16 +164,30 @@ async def upload_documents(
             new_client = await client_store.create(ClientCreate(name=client_name))
             actual_client_id = new_client.id
     
-    # Get appropriate vector store
-    if actual_client_id:
-        store = get_client_vector_store(actual_client_id)
-    else:
-        store = get_vector_store()
+    # Default to global client if not specified
+    if not actual_client_id:
+        actual_client_id = GLOBAL_CLIENT_ID
     
-    all_chunks: List[str] = []
-    all_ids: List[str] = []
-    all_metadatas: List[dict] = []
+    # Validate client access
+    if actual_client_id not in allowed_clients:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Access denied to client '{actual_client_id}'",
+        )
+    
+    # Get appropriate vector store
+    store = get_client_vector_store(actual_client_id)
+    
+    # Get embedding fingerprint for tracking
+    embedding_fp = get_embedding_fingerprint()
+    
+    all_chunks: List[Chunk] = []
+    all_chunk_ids: List[str] = []
     doc_count = 0
+    
+    # Use settings if not provided
+    effective_chunk_size = chunk_size or settings.rag.chunk_size
+    effective_overlap = chunk_overlap or settings.rag.chunk_overlap
 
     for file in files:
         content = await file.read()
@@ -203,20 +223,43 @@ async def upload_documents(
                 detail=f"No text content could be extracted from {filename}",
             )
 
-        chunks = chunk_text(text, max_chars=chunk_size, overlap=chunk_overlap)
-        for idx, chunk in enumerate(chunks):
-            all_chunks.append(chunk)
-            all_ids.append(f"{filename}#chunk-{idx}")
-            all_metadatas.append({"source": filename, "chunk": idx})
+        # Generate document ID
+        doc_id = generate_doc_id(filename, actual_client_id)
+        
+        # Chunk with rich metadata and content-hash IDs
+        chunks = chunk_document(
+            text=text,
+            doc_id=doc_id,
+            client_id=actual_client_id,
+            source_filename=filename,
+            embedding_fingerprint=embedding_fp,
+            extra_metadata={
+                "uploaded_by": current_user.get("user_id"),
+                "uploaded_at": datetime.utcnow().isoformat(),
+            },
+        )
+        
+        all_chunks.extend(chunks)
+        all_chunk_ids.extend([c.id for c in chunks])
         doc_count += 1
+        
+        # Record metrics
+        doc_type = os.path.splitext(filename)[1].lower() or "unknown"
+        record_chunks_created(actual_client_id, doc_type, len(chunks))
 
     if all_chunks:
-        store.add_documents(contents=all_chunks, ids=all_ids, metadatas=all_metadatas)
+        # Prepare data for vector store
+        contents = [c.content for c in all_chunks]
+        ids = [c.id for c in all_chunks]
+        metadatas = [c.metadata.to_dict() for c in all_chunks]
+        
+        store.add_documents(contents=contents, ids=ids, metadatas=metadatas)
 
     return DocumentUploadResponse(
         message="Documents uploaded successfully",
         document_count=doc_count,
         chunk_count=len(all_chunks),
+        chunk_ids=all_chunk_ids,
     )
 
 

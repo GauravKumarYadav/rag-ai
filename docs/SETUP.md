@@ -206,9 +206,14 @@ Key settings in `.env`:
 
 ```bash
 # LLM Provider (ollama, lmstudio, openai, custom)
-LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=llama3.2:1b
+LLM__PROVIDER=lmstudio
+LLM__LMSTUDIO__BASE_URL=http://host.containers.internal:1234/v1
+LLM__LMSTUDIO__MODEL=qwen/qwen3-vl-30b
+
+# Alternative: Ollama
+# LLM__PROVIDER=ollama
+# LLM__OLLAMA__BASE_URL=http://ollama:11434
+# LLM__OLLAMA__MODEL=mistral:latest
 
 # Embeddings
 EMBEDDING_MODEL=nomic-embed-text
@@ -229,6 +234,16 @@ CHROMADB_PORT=8000
 
 # Logging
 LOGGING_LEVEL=INFO
+
+# RAG Quality Settings (NEW)
+RAG__BM25_ENABLED=true
+RAG__BM25_WEIGHT=0.4
+RAG__VECTOR_WEIGHT=0.6
+RAG__KNOWLEDGE_GRAPH_ENABLED=true
+RAG__KG_EXPANSION_DEPTH=2
+RAG__VERIFICATION_ENABLED=true
+RAG__CITATION_REQUIRED=true
+RAG__MIN_CITATION_COVERAGE=0.7
 ```
 
 ---
@@ -338,21 +353,59 @@ curl -X POST http://localhost:8000/models/switch \
 
 ## Configuration Reference
 
+### LLM Settings
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `lmstudio` | LLM backend: lmstudio, ollama, openai |
-| `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | LMStudio API endpoint |
-| `EMBEDDING_MODEL` | `text-embedding-nomic-embed-text-v1.5` | Model for embeddings |
-| `VECTOR_STORE_PROVIDER` | `chromadb` | Vector DB: chromadb, pinecone, etc. |
+| `LLM__PROVIDER` | `lmstudio` | LLM backend: lmstudio, ollama, openai |
+| `LLM__LMSTUDIO__BASE_URL` | `http://host.containers.internal:1234/v1` | LMStudio API endpoint |
+| `LLM__LMSTUDIO__MODEL` | `qwen/qwen3-vl-30b` | LM Studio model |
+| `LLM__OLLAMA__BASE_URL` | `http://ollama:11434` | Ollama API endpoint |
+| `LLM__OLLAMA__MODEL` | `mistral:latest` | Ollama model |
+| `LLM__TEMPERATURE` | `0.25` | Response creativity (0-1) |
+| `LLM__MAX_TOKENS` | `1024` | Max response length |
+
+### RAG Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EMBEDDING_MODEL` | `nomic-embed-text` | Model for embeddings |
+| `VECTOR_STORE_PROVIDER` | `chromadb` | Vector DB: chromadb |
 | `CHROMA_DB_PATH` | `./data/chroma` | ChromaDB data directory |
-| `VECTOR_STORE_URL` | (none) | Remote ChromaDB server URL |
-| `LLM_TEMPERATURE` | `0.25` | Response creativity (0-1) |
-| `LLM_MAX_TOKENS` | `1024` | Max response length |
+| `RAG__RERANKER_ENABLED` | `true` | Enable cross-encoder reranking |
+| `RAG__INITIAL_FETCH_K` | `30` | Candidates before reranking |
+| `RAG__RERANK_TOP_K` | `5` | Results after reranking |
+
+### Hybrid Search & Knowledge Graph (NEW)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RAG__BM25_ENABLED` | `true` | Enable BM25 keyword search |
+| `RAG__BM25_WEIGHT` | `0.4` | BM25 weight in RRF fusion |
+| `RAG__VECTOR_WEIGHT` | `0.6` | Vector weight in RRF fusion |
+| `RAG__KNOWLEDGE_GRAPH_ENABLED` | `true` | Enable per-client knowledge graphs |
+| `RAG__KG_EXPANSION_DEPTH` | `2` | Graph traversal depth |
+| `RAG__KG_PERSIST_PATH` | `./data/knowledge_graphs` | KG storage path |
+
+### Answer Verification (NEW)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RAG__VERIFICATION_ENABLED` | `true` | Enable answer verification |
+| `RAG__CITATION_REQUIRED` | `true` | Require source citations |
+| `RAG__MIN_CITATION_COVERAGE` | `0.7` | Min 70% claims cited |
+| `RAG__MIN_CONFIDENCE_THRESHOLD` | `0.3` | Evidence confidence threshold |
+
+### Database & Infrastructure
+
+| Variable | Default | Description |
+|----------|---------|-------------|
 | `DATABASE_HOST` | `localhost` | MySQL host |
 | `DATABASE_PORT` | `3306` | MySQL port |
 | `DATABASE_NAME` | `audit_logs` | MySQL database name |
 | `DATABASE_USER` | `root` | MySQL username |
 | `DATABASE_PASSWORD` | - | MySQL password (required) |
+| `REDIS_URL` | `redis://redis:6379` | Redis URL |
 | `JWT_SECRET_KEY` | - | JWT signing key (required) |
 | `LOGGING_LEVEL` | `INFO` | Log level (DEBUG, INFO, WARNING, ERROR) |
 | `EVALUATION_ENABLED` | `true` | Enable scheduled evaluations |
@@ -362,10 +415,17 @@ curl -X POST http://localhost:8000/models/switch \
 
 ## Troubleshooting
 
-### LMStudio Connection Failed
-- Ensure LMStudio server is running (Local Server → Start)
-- Check the model is loaded
+### LM Studio Connection Failed
+- Ensure LM Studio server is running (Local Server → Start)
+- Check the model is loaded (e.g., `qwen/qwen3-vl-30b`)
 - Verify port 1234 is not blocked
+- **For Docker/Podman:** Use `http://host.containers.internal:1234/v1` as the base URL
+- Check `.env` has correct settings:
+  ```bash
+  LLM__PROVIDER=lmstudio
+  LLM__LMSTUDIO__BASE_URL=http://host.containers.internal:1234/v1
+  LLM__LMSTUDIO__MODEL=qwen/qwen3-vl-30b
+  ```
 
 ### Embedding Errors
 - Make sure `nomic-embed-text-v1.5` is loaded in LMStudio

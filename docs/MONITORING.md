@@ -64,6 +64,25 @@ The backend exposes metrics at `/metrics` using `prometheus-fastapi-instrumentat
 | `llm_request_duration_seconds` | Histogram | model, provider | LLM API latency |
 | `llm_tokens_used` | Counter | model, type | Token usage |
 
+### Hybrid Search & Knowledge Graph Metrics (NEW)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `rag_bm25_search_duration_seconds` | Histogram | client_id | BM25 search latency |
+| `rag_hybrid_fusion_duration_seconds` | Histogram | client_id | RRF fusion latency |
+| `rag_kg_expansion_duration_seconds` | Histogram | client_id | Knowledge graph expansion time |
+| `rag_kg_entities_extracted` | Counter | client_id | Entities extracted from documents |
+| `rag_rerank_duration_seconds` | Histogram | - | Cross-encoder reranking time |
+
+### Answer Verification Metrics (NEW)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `rag_verification_duration_seconds` | Histogram | - | Answer verification latency |
+| `rag_citations_per_response` | Histogram | - | Number of citations per answer |
+| `rag_ungrounded_claims` | Counter | - | Claims without supporting evidence |
+| `rag_verification_failures` | Counter | - | Responses failing verification |
+
 ### Scrape Configuration
 
 Prometheus is configured to scrape the backend at 15s intervals:
@@ -195,6 +214,21 @@ rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m])
 
 # RAG retrieval latency
 histogram_quantile(0.95, rate(rag_retrieval_duration_seconds_bucket[5m]))
+
+# Hybrid search latency (BM25 + Vector)
+histogram_quantile(0.95, rate(rag_hybrid_fusion_duration_seconds_bucket[5m]))
+
+# Knowledge graph expansion time
+histogram_quantile(0.95, rate(rag_kg_expansion_duration_seconds_bucket[5m]))
+
+# Answer verification failure rate
+rate(rag_verification_failures[5m]) / rate(http_requests_total{handler="/chat"}[5m])
+
+# Average citations per response
+rate(rag_citations_per_response_sum[5m]) / rate(rag_citations_per_response_count[5m])
+
+# Ungrounded claims rate
+rate(rag_ungrounded_claims[5m])
 ```
 
 ---

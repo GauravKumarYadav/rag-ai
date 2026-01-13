@@ -296,8 +296,10 @@ Ensure the volume mount is correct:
 # Docker: check volume
 docker inspect chromadb | grep -A 5 "Mounts"
 
-# Should show your local path mapped to /chroma/chroma
+# Should show your local path mapped to /data
 ```
+
+**Note:** In microservices mode, ChromaDB uses a bind mount to `./data/chroma-docker:/data` for reliable persistence. This ensures data survives container restarts and rebuilds.
 
 ---
 

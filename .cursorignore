@@ -1,0 +1,5 @@
+# Allow AI to access .env files in this project
+!.env
+!.env.local
+!.env.example
+!.env.microservices

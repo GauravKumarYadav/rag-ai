@@ -22,7 +22,7 @@ from app.api.routes import (
     websocket,
 )
 from app.memory.pruner import start_pruning_scheduler, stop_pruning_scheduler
-from app.db.mysql import get_db_pool, close_db_pool, init_audit_tables
+from app.db.mysql import get_db_pool, close_db_pool, init_audit_tables, init_user_clients_table, ensure_global_client_exists
 from app.middleware.audit import AuditMiddleware
 from app.core.logging import setup_logging, CorrelationIdMiddleware
 from app.core.metrics import setup_metrics
@@ -51,7 +51,9 @@ async def lifespan(app: FastAPI):
     try:
         await get_db_pool()
         await init_audit_tables()
-        logger.info("MySQL audit logging initialized")
+        await init_user_clients_table()
+        await ensure_global_client_exists()
+        logger.info("MySQL audit logging and user-client tables initialized")
     except Exception as e:
         logger.warning(f"MySQL initialization failed (audit logging disabled): {e}")
     

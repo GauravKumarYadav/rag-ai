@@ -40,6 +40,22 @@ SMALL_MODEL_SYSTEM_PROMPT = (
     "5. For greetings, respond naturally without mentioning documents."
 )
 
+# Citation-enforced prompt for factual queries
+CITATION_SYSTEM_PROMPT = (
+    "You are a precise document assistant that ALWAYS cites sources.\n\n"
+    "CRITICAL RULES:\n"
+    "1. ONLY use information from the 'Context' section provided below.\n"
+    "2. For EVERY fact you state, cite the source using [Source: filename#chunk-N] format.\n"
+    "3. If you cannot find information in the context, say: "
+    "'I don't have information about that in the provided documents.'\n"
+    "4. NEVER make up or assume information not explicitly in the context.\n"
+    "5. Be precise with numbers, dates, and names - quote them exactly.\n\n"
+    "EXAMPLE RESPONSE:\n"
+    "The contract value is $50,000 [Source: contract.pdf#chunk-2] and expires "
+    "on December 31, 2024 [Source: contract.pdf#chunk-5].\n\n"
+    "For casual greetings (hi, hello), respond naturally without citing."
+)
+
 
 def _format_hits(hits: List[RetrievalHit], label: str) -> str:
     """Format retrieval hits in traditional format (backward compatible)."""
@@ -147,6 +163,7 @@ def build_optimized_messages(
     images: Optional[List[ImageInput]] = None,
     system_prompt: Optional[str] = None,
     provider: Union[str, object] = "ollama",
+    enforce_citations: bool = False,
 ) -> List[dict]:
     """
     Build optimized messages for small model RAG.
@@ -156,6 +173,7 @@ def build_optimized_messages(
     - Compressed facts instead of raw chunks
     - Running summary for older history
     - Evidence disclaimers for low confidence
+    - Citation enforcement for factual queries
     
     Args:
         user_text: The user's message
@@ -168,14 +186,20 @@ def build_optimized_messages(
         images: Optional images
         system_prompt: Optional system prompt override
         provider: LLM provider
+        enforce_citations: Use citation-enforced prompt (default: False)
         
     Returns:
         Optimized message list for small models
     """
     messages: List[dict] = []
     
-    # System prompt
-    base_prompt = system_prompt or SMALL_MODEL_SYSTEM_PROMPT
+    # System prompt - use citation prompt if enforcement enabled
+    if system_prompt:
+        base_prompt = system_prompt
+    elif enforce_citations and compressed_facts:
+        base_prompt = CITATION_SYSTEM_PROMPT
+    else:
+        base_prompt = SMALL_MODEL_SYSTEM_PROMPT
     messages.append({"role": "system", "content": base_prompt})
     
     # State block (replaces full history)

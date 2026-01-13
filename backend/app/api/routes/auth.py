@@ -44,6 +44,8 @@ async def login(request: LoginRequest):
     
     For WebSocket connections, pass the token as a query parameter:
     `/chat/ws/{client_id}?token=<access_token>`
+    
+    The token includes the user's allowed_clients for client-scoped access control.
     """
     # Get user from database
     user = await get_user_by_username(request.username)
@@ -71,13 +73,21 @@ async def login(request: LoginRequest):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Create access token
+    # Fetch user's allowed clients for embedding in JWT
+    from app.db.mysql import get_user_client_ids
     from app.config import settings
+    
+    allowed_clients = []
+    if not user.get("is_superuser", False):
+        # Regular users get their assigned client IDs
+        allowed_clients = await get_user_client_ids(user["id"])
+    # Superusers get "*" which means all clients (handled in dependency)
     
     access_token = create_access_token(
         user_id=user["id"],
         username=user["username"],
         is_superuser=user.get("is_superuser", False),
+        allowed_clients=allowed_clients,
     )
     
     return TokenResponse(

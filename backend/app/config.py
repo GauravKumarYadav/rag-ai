@@ -65,6 +65,11 @@ class RAGSettings(BaseModel):
     # Embedding model (for Ollama: nomic-embed-text, for LMStudio: text-embedding-nomic-embed-text-v1.5)
     embedding_model: str = "nomic-embed-text"
     
+    # Embedding provider for fingerprinting
+    embedding_provider: str = "ollama"
+    embedding_dimension: int = 768
+    embedding_normalize: bool = True
+    
     # Cloud/remote store settings
     url: Optional[str] = None
     api_key: Optional[str] = None
@@ -74,6 +79,26 @@ class RAGSettings(BaseModel):
     # Embedding service URL (microservices mode)
     embedding_service_url: Optional[str] = None
     
+    # ==========================================================================
+    # Chunking Configuration
+    # ==========================================================================
+    
+    # Chunk size settings
+    chunk_size: int = 1200         # Target characters per chunk (for char mode)
+    chunk_overlap: int = 200       # Overlap characters between chunks
+    chunk_token_size: int = 512    # Target tokens per chunk (for token mode)
+    chunk_token_overlap: int = 50  # Overlap tokens between chunks
+    min_chunk_tokens: int = 50     # Minimum chunk size in tokens
+    
+    # Chunking behavior
+    chunk_method: str = "char"     # "char" or "token" based chunking
+    respect_headings: bool = True  # Try to break at markdown headers
+    respect_sentences: bool = True # Try to break at sentence boundaries
+    
+    # Chunk ID generation
+    use_content_hash_ids: bool = True  # Use content-hash for deterministic IDs
+    
+    # ==========================================================================
     # Reranker settings (for small model optimization)
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     reranker_enabled: bool = True
@@ -88,6 +113,23 @@ class RAGSettings(BaseModel):
     
     # Evidence thresholds
     min_confidence_threshold: float = 0.3  # Below this, add uncertainty disclaimer
+    
+    # Hybrid Search settings (BM25 + Vector)
+    bm25_enabled: bool = True
+    bm25_weight: float = 0.4      # Weight for BM25 in RRF fusion
+    vector_weight: float = 0.6    # Weight for vector search in RRF fusion
+    bm25_persist_path: str = "./data/bm25"
+    
+    # Knowledge Graph settings
+    knowledge_graph_enabled: bool = True
+    kg_expansion_depth: int = 2   # How many relationship hops to expand
+    kg_persist_path: str = "./data/knowledge_graphs"
+    entity_extraction_model: str = "mistral:latest"
+    
+    # Answer Verification settings
+    verification_enabled: bool = True
+    citation_required: bool = True
+    min_citation_coverage: float = 0.7  # 70% of factual claims should be cited
 
 
 class RedisSettings(BaseModel):

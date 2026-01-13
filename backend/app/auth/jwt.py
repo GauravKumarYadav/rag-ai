@@ -1,7 +1,7 @@
 """JWT token creation and verification utilities."""
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from jose import JWTError, jwt
 
@@ -12,6 +12,7 @@ def create_access_token(
     user_id: str,
     username: str,
     is_superuser: bool = False,
+    allowed_clients: Optional[List[str]] = None,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
@@ -21,6 +22,7 @@ def create_access_token(
         user_id: The unique user identifier
         username: The username
         is_superuser: Whether the user has admin privileges
+        allowed_clients: List of client IDs this user can access
         expires_delta: Custom expiration time, defaults to settings value
         
     Returns:
@@ -39,6 +41,11 @@ def create_access_token(
         "iat": datetime.now(timezone.utc),
     }
     
+    # Include allowed_clients in token for fast authorization
+    # Note: 'global' client is always implicitly allowed
+    if allowed_clients is not None:
+        to_encode["allowed_clients"] = allowed_clients
+    
     encoded_jwt = jwt.encode(
         to_encode,
         settings.jwt_secret_key.get_secret_value(),
@@ -46,6 +53,41 @@ def create_access_token(
     )
     
     return encoded_jwt
+
+
+async def create_access_token_with_clients(
+    user_id: str,
+    username: str,
+    is_superuser: bool = False,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    """
+    Create a JWT access token with allowed_clients fetched from database.
+    
+    This is an async version that looks up the user's allowed clients
+    from the database and embeds them in the token.
+    
+    Args:
+        user_id: The unique user identifier
+        username: The username
+        is_superuser: Whether the user has admin privileges
+        expires_delta: Custom expiration time, defaults to settings value
+        
+    Returns:
+        Encoded JWT token string with allowed_clients claim
+    """
+    from app.db.mysql import get_user_client_ids
+    
+    # Fetch allowed clients from database
+    allowed_clients = await get_user_client_ids(user_id)
+    
+    return create_access_token(
+        user_id=user_id,
+        username=username,
+        is_superuser=is_superuser,
+        allowed_clients=allowed_clients,
+        expires_delta=expires_delta,
+    )
 
 
 def decode_token(token: str) -> Optional[Dict[str, Any]]:

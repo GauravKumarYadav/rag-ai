@@ -56,7 +56,9 @@ Or use the Admin Dashboard at http://localhost:8000/admin.html
 
 ## Metrics
 
-### Precision@K
+### Retrieval Metrics
+
+#### Precision@K
 
 **What it measures:** Of the K documents retrieved, how many are relevant?
 
@@ -64,7 +66,7 @@ $$\text{Precision@K} = \frac{\text{Relevant Documents Retrieved}}{\text{K}}$$
 
 **Good values:** > 0.7 means most retrieved docs are relevant
 
-### Recall@K
+#### Recall@K
 
 **What it measures:** Of all relevant documents, how many were retrieved?
 
@@ -72,7 +74,7 @@ $$\text{Recall@K} = \frac{\text{Relevant Documents Retrieved}}{\text{Total Relev
 
 **Good values:** > 0.8 means you're finding most relevant docs
 
-### Mean Reciprocal Rank (MRR)
+#### Mean Reciprocal Rank (MRR)
 
 **What it measures:** How high does the first relevant document rank?
 
@@ -80,13 +82,47 @@ $$\text{MRR} = \frac{1}{|Q|} \sum_{i=1}^{|Q|} \frac{1}{\text{rank}_i}$$
 
 **Good values:** > 0.8 means relevant docs appear near the top
 
-### Faithfulness
+#### Hit Rate@K
+
+**What it measures:** How often is at least one relevant document in the top K?
+
+$$\text{HitRate@K} = \frac{\text{Queries with at least 1 relevant doc in top K}}{\text{Total Queries}}$$
+
+**Good values:** > 0.9 means retrieval rarely fails completely
+
+### Generation Quality Metrics
+
+#### Faithfulness
 
 **What it measures:** Is the generated answer supported by retrieved context?
 
 Uses LLM to check if the answer is grounded in the source documents.
 
 **Good values:** > 0.9 means answers are well-grounded
+
+#### Citation Accuracy (New)
+
+**What it measures:** Are citations in the response correct and verifiable?
+
+$$\text{CitationAccuracy} = \frac{\text{Correct Citations}}{\text{Total Citations}}$$
+
+**Good values:** > 0.95 means citations accurately point to sources
+
+#### Citation Coverage (New)
+
+**What it measures:** What percentage of claims have supporting citations?
+
+$$\text{CitationCoverage} = \frac{\text{Cited Claims}}{\text{Total Claims}}$$
+
+**Good values:** > 0.7 (configurable via `RAG__MIN_CITATION_COVERAGE`)
+
+#### Answer Relevance (New)
+
+**What it measures:** Does the answer actually address the user's question?
+
+Uses LLM to score answer relevance on a 0-1 scale.
+
+**Good values:** > 0.8 means answers are on-topic
 
 ---
 
@@ -197,6 +233,11 @@ EVALUATION_ENABLED=true
 EVALUATION_SCHEDULE_CRON="0 2 * * *"
 EVALUATION_DEFAULT_SAMPLE_SIZE=50
 EVALUATION_DEFAULT_K=5
+
+# New: Answer verification settings
+RAG__VERIFICATION_ENABLED=true
+RAG__CITATION_REQUIRED=true
+RAG__MIN_CITATION_COVERAGE=0.7
 ```
 
 ### How Scheduled Runs Work
@@ -320,10 +361,43 @@ The admin dashboard at `/admin.html` provides:
 
 | Scenario | Likely Cause | Action |
 |----------|--------------|--------|
-| Low precision | Irrelevant docs retrieved | Tune embedding model, improve chunking |
-| Low recall | Missing relevant docs | Check indexing, increase K |
-| Low MRR | Relevant docs ranked low | Tune reranking, improve embeddings |
-| Low faithfulness | Hallucination | Improve prompts, add grounding |
+| Low precision | Irrelevant docs retrieved | Tune embedding model, improve chunking, enable BM25 hybrid search |
+| Low recall | Missing relevant docs | Check indexing, increase K, enable knowledge graph expansion |
+| Low MRR | Relevant docs ranked low | Tune reranking, improve embeddings, adjust RRF weights |
+| Low faithfulness | Hallucination | Enable verification, require citations, lower confidence threshold |
+| Low citation accuracy | Wrong source references | Improve context compression, clearer source IDs |
+| Low citation coverage | Missing citations | Enforce citation in prompts, enable `RAG__CITATION_REQUIRED` |
+| Low answer relevance | Off-topic answers | Improve query rewriting, check intent classification |
+
+---
+
+---
+
+## Sample Test Cases
+
+A sample evaluation dataset is provided at `data/evaluation/sample_test_cases.json`:
+
+```json
+{
+  "test_cases": [
+    {
+      "query": "What is the contract value?",
+      "expected_answer": "The contract value is $50,000",
+      "expected_sources": ["contract.pdf"],
+      "category": "factual_lookup"
+    }
+  ]
+}
+```
+
+### Categories
+
+| Category | Description | Example |
+|----------|-------------|---------|
+| `factual_lookup` | Direct fact retrieval | "What is the deadline?" |
+| `multi_hop` | Requires combining info | "Compare pricing across vendors" |
+| `entity_specific` | About named entities | "What did John Doe decide?" |
+| `temporal` | Time-based queries | "What happened in Q3 2025?" |
 
 ---
 
@@ -331,7 +405,7 @@ The admin dashboard at `/admin.html` provides:
 
 ### Dataset Generation Fails
 
-1. Check LLM connection: Verify LMStudio is running
+1. Check LLM connection: Verify LMStudio or Ollama is running
 2. Check ChromaDB: Ensure client has documents
 3. Check logs: `grep "evaluation" ./logs/app.log`
 
@@ -340,6 +414,12 @@ The admin dashboard at `/admin.html` provides:
 1. Verify dataset has valid Q&A pairs
 2. Check retrieval is working: Test via chat endpoint
 3. Ensure correct client_id is used
+
+### Low Citation Coverage
+
+1. Enable `RAG__CITATION_REQUIRED=true`
+2. Check that context compression preserves source IDs
+3. Review the citation prompt in `prompt_builder.py`
 
 ### Scheduler Not Running
 
