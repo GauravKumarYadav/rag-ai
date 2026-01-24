@@ -60,3 +60,4 @@ logs/
 # mypy
 .mypy_cache/
 backend/data/chroma/*.bin
+.env
