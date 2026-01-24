@@ -1,5 +1,6 @@
 import base64
 import json
+import time
 from typing import Any, Dict, List, Optional, Set
 
 from fastapi import (
@@ -21,6 +22,15 @@ from app.auth.dependencies import get_allowed_clients, GLOBAL_CLIENT_ID
 from app.core.metrics import record_client_access_denied
 
 router = APIRouter()
+_DEBUG_LOG_PATH = "/Users/g0y01hx/Desktop/personal_work/chatbot/.cursor/debug.log"
+
+
+def _debug_log(payload: dict) -> None:
+    try:
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(payload) + "\n")
+    except Exception:
+        pass
 
 
 def validate_and_get_client_id(
@@ -42,6 +52,21 @@ def validate_and_get_client_id(
     Raises:
         HTTPException 403 if user doesn't have access to requested client
     """
+    # #region agent log
+    _debug_log({
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "H1",
+        "location": "chat.py:validate_and_get_client_id",
+        "message": "Validate client",
+        "data": {
+            "requested_client_id": requested_client_id,
+            "allowed_clients": sorted(allowed_clients),
+            "user_id": user_id,
+        },
+        "timestamp": int(time.time() * 1000),
+    })
+    # #endregion agent log
     # Default to global client if not specified
     if requested_client_id is None:
         return GLOBAL_CLIENT_ID
@@ -157,6 +182,23 @@ async def chat(
             system_prompt=form.get("system_prompt"),
             client_id=validated_client_id,
         )
+
+    # #region agent log
+    _debug_log({
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "H1",
+        "location": "chat.py:chat",
+        "message": "ChatRequest built",
+        "data": {
+            "client_id": chat_request.client_id,
+            "conversation_id": chat_request.conversation_id,
+            "stream": chat_request.stream,
+            "top_k": chat_request.top_k,
+        },
+        "timestamp": int(time.time() * 1000),
+    })
+    # #endregion agent log
     
     # Pass allowed_clients to service for retrieval filtering
     result, sources = await service.handle_chat(

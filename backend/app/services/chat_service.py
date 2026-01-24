@@ -14,9 +14,12 @@ This service implements the full optimized RAG pipeline:
 10. Answer verification for hallucination detection
 """
 
+import json
 import logging
 import re
-from typing import AsyncGenerator, List, Optional, Tuple
+import time
+from dataclasses import dataclass
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from fastapi import BackgroundTasks
 
@@ -31,7 +34,7 @@ from app.memory.long_term import LongTermMemory, get_long_term_memory
 from app.memory.session_buffer import SessionBuffer, get_session_buffer
 from app.models.client import ClientStore, get_client_store
 from app.models.schemas import ChatRequest, RetrievalHit
-from app.rag.retriever import Retriever, get_retriever
+from app.rag.retriever import Retriever, get_retriever, search_with_scopes
 from app.rag.vector_store import get_client_vector_store
 from app.services.client_extractor import ClientExtractor, get_client_extractor
 from app.services.context_compressor import (
@@ -44,6 +47,8 @@ from app.services.evidence_validator import (
     EvidenceValidator,
     get_evidence_validator_with_llm,
 )
+from app.services.document_listing import list_documents
+from app.services.response_generator import generate_response
 from app.services.prompt_builder import build_messages, build_optimized_messages
 from app.services.query_processor import (
     Intent,
@@ -52,13 +57,27 @@ from app.services.query_processor import (
     get_query_processor,
 )
 from app.services.token_budgeter import TokenBudgeter, get_token_budgeter
+from app.tools.calculator import CalculatorTool
+from app.tools.datetime_tool import DateTimeTool
 
 # New components for enhanced RAG
-from app.rag.hybrid_search import HybridSearch, get_hybrid_search
 from app.services.citation_extractor import CitationExtractor, get_citation_extractor
 from app.services.answer_verifier import AnswerVerifier, get_answer_verifier
 
+# Agentic RAG components (lazy imported)
+# from app.agents.orchestrator import OrchestratorAgent, get_orchestrator_agent
+# from app.agents.state import AgentState
+
 logger = logging.getLogger(__name__)
+_DEBUG_LOG_PATH = "/Users/g0y01hx/Desktop/personal_work/chatbot/.cursor/debug.log"
+
+
+def _debug_log(payload: dict) -> None:
+    try:
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(payload) + "\n")
+    except Exception:
+        pass
 
 
 # Legacy patterns kept for backward compatibility
@@ -78,6 +97,13 @@ CONTEXT_KEYWORDS = [
     "analyze", "summary", "summarize", "explain", "list", "get",
     "aadhar", "aadhaar", "card", "pdf", "report", "record",
 ]
+
+
+@dataclass
+class ToolOnlyOutcome:
+    tool_results: Dict[str, Any]
+    errors: List[str]
+    needs_details: bool = False
 
 
 def _needs_rag_retrieval(message: str) -> bool:
@@ -227,17 +253,126 @@ class ChatService:
         allowed_clients: Optional[set] = None,
     ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
         """
-        Handle chat request with optimized or legacy pipeline.
+        Handle chat request with agentic, optimized, or legacy pipeline.
+        
+        Pipeline selection:
+        1. Agentic (if settings.agent.enabled): Multi-agent orchestration with
+           query decomposition, multi-hop retrieval, and self-correction
+        2. Optimized (if use_optimized_pipeline): Single-pass RAG with
+           hybrid search, reranking, and compression
+        3. Legacy: Basic RAG pipeline for backward compatibility
         
         Args:
             request: The chat request
             background_tasks: Optional background tasks for async operations
             allowed_clients: Set of client IDs the user can access (for authorization)
         """
-        if self.use_optimized_pipeline:
+        # Check for agentic pipeline
+        # #region agent log
+        _debug_log({
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "H1",
+            "location": "chat_service.py:handle_chat",
+            "message": "Pipeline selection",
+            "data": {
+                "client_id": request.client_id,
+                "allowed_clients": list(allowed_clients) if allowed_clients else None,
+                "agent_enabled": settings.agent.enabled,
+                "optimized_enabled": self.use_optimized_pipeline,
+            },
+            "timestamp": int(time.time() * 1000),
+        })
+        # #endregion agent log
+        if settings.agent.enabled:
+            return await self._handle_chat_agentic(request, background_tasks, allowed_clients)
+        elif self.use_optimized_pipeline:
             return await self._handle_chat_optimized(request, background_tasks, allowed_clients)
         else:
             return await self._handle_chat_legacy(request, background_tasks, allowed_clients)
+    
+    async def _handle_chat_agentic(
+        self,
+        request: ChatRequest,
+        background_tasks: BackgroundTasks | None = None,
+        allowed_clients: Optional[set] = None,
+    ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
+        """
+        Agentic RAG pipeline with multi-agent orchestration.
+        
+        Features:
+        - Query decomposition for complex questions
+        - Multi-hop retrieval with adaptive strategies
+        - Tool calling for calculations and data queries
+        - Self-correction loops with re-retrieval
+        - Model routing based on task complexity
+        
+        Falls back to optimized pipeline on errors.
+        """
+        from app.core.metrics import record_stage_executed
+        
+        logger.info(f"[Agentic] Processing request: {request.message[:50]}...")
+        
+        try:
+            # Lazy import agentic components
+            from app.agents.orchestrator import get_orchestrator_agent
+            from app.agents.state import AgentState
+            
+            record_stage_executed("agentic_pipeline")
+            
+            # Initialize agent state with tenant isolation
+            client_id = request.client_id or "global"
+            
+            # Load conversation state for intent classification and reference resolution
+            conversation_state = await self.state_manager.get_state(request.conversation_id)
+            
+            state = AgentState(
+                query=request.message,
+                client_id=client_id,
+                allowed_clients=list(allowed_clients) if allowed_clients else None,
+                conversation_id=request.conversation_id,
+                conversation_state=conversation_state,
+                max_iterations=settings.agent.max_iterations,
+                max_corrections=settings.agent.max_corrections,
+            )
+            
+            # Get orchestrator with all sub-agents
+            orchestrator = get_orchestrator_agent(
+                lm_client=self.lm_client,
+                include_all_agents=True,
+            )
+            
+            # Run the orchestration
+            result_state = await orchestrator.run(state)
+            
+            # Extract answer and sources
+            answer = result_state.final_answer or "I couldn't generate an answer."
+            sources = result_state.retrieved_context
+            
+            # Handle streaming (agentic pipeline returns non-streamed for now)
+            if request.stream:
+                # Wrap non-streamed response as stream
+                async def stream_response():
+                    yield f"data: {answer.replace(chr(10), chr(92) + 'n')}\n\n"
+                    await self._post_turn_optimized(request, answer, background_tasks)
+                
+                return stream_response(), sources
+            
+            # Post-turn processing
+            await self._post_turn_optimized(request, answer, background_tasks)
+            
+            logger.info(
+                f"[Agentic] Completed: {len(sources)} sources, "
+                f"{result_state.iteration} iterations, "
+                f"{result_state.correction_attempts} corrections"
+            )
+            
+            return answer, sources
+            
+        except Exception as e:
+            logger.error(f"[Agentic] Pipeline failed: {e}, falling back to optimized")
+            # Fall back to optimized pipeline on any error
+            return await self._handle_chat_optimized(request, background_tasks, allowed_clients)
 
     async def _handle_chat_optimized(
         self, 
@@ -276,7 +411,11 @@ class ChatService:
         logger.debug(f"[Optimized] State block: {state_block[:100] if state_block else 'empty'}...")
         
         # Step 2: Process query (intent classification + rewriting)
-        query_result = await self.query_processor.process(request.message, state)
+        query_result = await self.query_processor.process(
+            request.message,
+            state,
+            lm_client=self.lm_client,
+        )
         record_intent(query_result.intent.value)
         logger.debug(f"[Optimized] Intent: {query_result.intent.value}, needs_retrieval: {query_result.needs_retrieval}")
         
@@ -289,6 +428,68 @@ class ChatService:
         # Use the client_id from request (already validated by route)
         # Default to 'global' if not specified
         client_id = request.client_id or "global"
+        has_state_context = not state.is_empty()
+        
+        # =================================================================
+        # INTENT-BASED GATING: Document listing
+        # =================================================================
+        if query_result.intent == Intent.DOCUMENT_LIST:
+            record_stage_skipped("retrieval", "document_list")
+            logger.info("[Gating] Skipping retrieval - document list intent")
+            
+            client_label = None
+            if client_id and client_id != "global":
+                client = await self.client_store.get(client_id)
+                if client:
+                    client_label = client.name
+            
+            include_global = client_id is not None and client_id != "global"
+            # #region agent log
+            _debug_log({
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "H2",
+                "location": "chat_service.py:_handle_chat_optimized",
+                "message": "Document list gating",
+                "data": {
+                    "client_id": client_id,
+                    "include_global": include_global,
+                    "intent": query_result.intent.value,
+                },
+                "timestamp": int(time.time() * 1000),
+            })
+            # #endregion agent log
+            documents = list_documents(
+                client_id=client_id,
+                include_global=include_global,
+            )
+            text = await self._generate_llm_response(
+                response_type="document_list",
+                user_message=request.message,
+                documents=documents,
+                client_label=client_label,
+            )
+            return await self._respond_with_text(request, text, background_tasks)
+        
+        # =================================================================
+        # INTENT-BASED GATING: Clarification
+        # =================================================================
+        if query_result.intent == Intent.CLARIFICATION:
+            record_stage_skipped("retrieval", "clarification")
+            logger.info("[Gating] Skipping retrieval - clarification intent")
+            
+            if not has_state_context:
+                text = await self._generate_llm_response(
+                    response_type="clarification",
+                    user_message=request.message,
+                )
+                return await self._respond_with_text(request, text, background_tasks)
+            
+            return await self._generate_from_state(
+                request=request,
+                state=state,
+                background_tasks=background_tasks,
+            )
         
         # =================================================================
         # INTENT-BASED GATING: Skip retrieval for chitchat
@@ -297,12 +498,11 @@ class ChatService:
             record_stage_skipped("retrieval", "chitchat")
             logger.info(f"[Gating] Skipping retrieval - chitchat intent detected")
             
-            # Generate response without retrieval
-            return await self._generate_without_retrieval(
-                request=request,
-                state=state,
-                background_tasks=background_tasks,
+            text = await self._generate_llm_response(
+                response_type="chitchat",
+                user_message=request.message,
             )
+            return await self._respond_with_text(request, text, background_tasks)
         
         # =================================================================
         # FOLLOW-UP GATING: Only retrieve if references exist
@@ -311,19 +511,50 @@ class ChatService:
             record_stage_skipped("retrieval", "no_refs")
             logger.info(f"[Gating] Skipping retrieval - follow-up without resolvable references")
             
-            # Generate from state only
+            if not has_state_context:
+                text = await self._generate_llm_response(
+                    response_type="followup_needs_reference",
+                    user_message=request.message,
+                )
+                return await self._respond_with_text(request, text, background_tasks)
+            
             return await self._generate_from_state(
                 request=request,
                 state=state,
                 background_tasks=background_tasks,
             )
+
+        # =================================================================
+        # TOOL-ONLY GATING: Calculations or date/time queries
+        # =================================================================
+        tool_outcome = await self._try_tool_only_response(request.message)
+        if tool_outcome:
+            record_stage_skipped("retrieval", "tool_only")
+            logger.info("[Gating] Skipping retrieval - tool-only query detected")
+            text = await self._generate_llm_response(
+                response_type="tool_results",
+                user_message=request.message,
+                tool_results=tool_outcome.tool_results,
+                errors=tool_outcome.errors,
+                needs_details=tool_outcome.needs_details,
+            )
+            return await self._respond_with_text(request, text, background_tasks)
+
+        # =================================================================
+        # ACTION REQUEST: No retrieval needed
+        # =================================================================
+        if query_result.intent == Intent.ACTION_REQUEST and not query_result.needs_retrieval:
+            record_stage_skipped("retrieval", "action_no_retrieval")
+            logger.info("[Gating] Skipping retrieval - action without retrieval needed")
+            text = await self._generate_llm_response(
+                response_type="action_request",
+                user_message=request.message,
+            )
+            return await self._respond_with_text(request, text, background_tasks)
         
         # Step 3-7: Retrieval pipeline (only if needed)
         if query_result.needs_retrieval and request.top_k > 0:
             record_stage_executed("retrieval")
-            
-            # Record that we're applying client filter
-            record_cross_client_filter(client_id)
             
             # Update state with client context
             if client_id and client_id != "global":
@@ -331,41 +562,18 @@ class ChatService:
                 if client:
                     await self.state_manager.set_client_context(conversation_id, client.name)
             
-            # Step 3: Hybrid Search (BM25 + Vector) with reranking + MMR
-            # ALWAYS filter by client_id - this is the security boundary
             search_query = query_result.search_query
-            
-            # Use hybrid search if BM25 is enabled
-            if settings.rag.bm25_enabled:
-                # Client-specific hybrid search with hard client filter
-                try:
-                    hybrid = get_hybrid_search(client_id=client_id)
-                    retrieved = hybrid.search(
-                        query=search_query,
-                        top_k=settings.rag.rerank_top_k,
-                        fetch_k=settings.rag.initial_fetch_k,
-                        use_reranker=settings.rag.reranker_enabled,
-                    )
-                    logger.debug(f"[Optimized] Hybrid search for client {client_id}: {len(retrieved)} docs")
-                except Exception as e:
-                    logger.warning(f"Hybrid search failed, falling back: {e}")
-                    retrieved = self.retriever.search_with_client_filter(
-                        query=search_query,
-                        client_id=client_id,
-                        top_k=settings.rag.rerank_top_k,
-                        fetch_k=settings.rag.initial_fetch_k,
-                        metadata_filters=request.metadata_filters,
-                    )
-            else:
-                # Vector retrieval with client filter
-                retrieved = self.retriever.search_with_client_filter(
-                    query=search_query,
-                    client_id=client_id,
-                    top_k=settings.rag.rerank_top_k,
-                    fetch_k=settings.rag.initial_fetch_k,
-                    metadata_filters=request.metadata_filters,
-                )
-                logger.debug(f"[Optimized] Vector retrieval for client {client_id}: {len(retrieved)} docs")
+            retrieved = search_with_scopes(
+                query=search_query,
+                client_id=client_id,
+                top_k=settings.rag.rerank_top_k,
+                fetch_k=settings.rag.initial_fetch_k,
+                metadata_filters=request.metadata_filters,
+                allowed_clients=allowed_clients,
+            )
+            logger.debug(
+                f"[Optimized] Multi-scope retrieval for {client_id}: {len(retrieved)} docs"
+            )
             
             # Step 4: Knowledge Graph Expansion (with gating)
             # Only expand KG when initial retrieval is weak
@@ -508,29 +716,87 @@ class ChatService:
         from app.core.metrics import record_cross_client_filter, record_stage_executed
         
         history = self.session_buffer.get(request.conversation_id)
+        conversation_state = await self.state_manager.get_state(request.conversation_id)
+        query_result = await self.query_processor.process(
+            request.message,
+            conversation_state,
+            lm_client=self.lm_client,
+        )
         
-        needs_rag = _needs_rag_retrieval(request.message)
+        needs_rag = query_result.needs_retrieval
         logger.debug(f"[Legacy] Message needs RAG: {needs_rag}")
         
         # Use client_id from request (already validated by route)
         # Default to 'global' if not specified
         client_id = request.client_id or "global"
+
+        # Early natural responses for legacy pipeline
+        if query_result.intent == Intent.DOCUMENT_LIST:
+            documents = list_documents(
+                client_id=client_id,
+                include_global=client_id is not None and client_id != "global",
+            )
+            text = await self._generate_llm_response(
+                response_type="document_list",
+                user_message=request.message,
+                documents=documents,
+            )
+            return await self._respond_with_text_legacy(request, text, background_tasks)
+
+        if query_result.intent == Intent.CHITCHAT:
+            text = await self._generate_llm_response(
+                response_type="chitchat",
+                user_message=request.message,
+            )
+            return await self._respond_with_text_legacy(request, text, background_tasks)
+
+        if query_result.intent == Intent.CLARIFICATION and conversation_state.is_empty():
+            text = await self._generate_llm_response(
+                response_type="clarification",
+                user_message=request.message,
+            )
+            return await self._respond_with_text_legacy(request, text, background_tasks)
+
+        if query_result.intent == Intent.FOLLOW_UP and not query_result.resolved_references and conversation_state.is_empty():
+            text = await self._generate_llm_response(
+                response_type="followup_needs_reference",
+                user_message=request.message,
+            )
+            return await self._respond_with_text_legacy(request, text, background_tasks)
+
+        tool_outcome = await self._try_tool_only_response(request.message)
+        if tool_outcome:
+            text = await self._generate_llm_response(
+                response_type="tool_results",
+                user_message=request.message,
+                tool_results=tool_outcome.tool_results,
+                errors=tool_outcome.errors,
+                needs_details=tool_outcome.needs_details,
+            )
+            return await self._respond_with_text_legacy(request, text, background_tasks)
+
+        if query_result.intent == Intent.ACTION_REQUEST and not query_result.needs_retrieval:
+            text = await self._generate_llm_response(
+                response_type="action_request",
+                user_message=request.message,
+            )
+            return await self._respond_with_text_legacy(request, text, background_tasks)
         
         retrieved = []
         memory_hits = []
         
         if needs_rag and request.top_k > 0:
             record_stage_executed("retrieval")
-            record_cross_client_filter(client_id)
             
-            # ALWAYS search with client filter - security boundary
-            client_store = get_client_vector_store(client_id)
-            retrieved = client_store.query(
-                query=request.message, 
-                top_k=request.top_k, 
-                collection="documents"
+            retrieved = search_with_scopes(
+                query=request.message,
+                client_id=client_id,
+                top_k=request.top_k,
+                fetch_k=settings.rag.initial_fetch_k,
+                metadata_filters=request.metadata_filters,
+                allowed_clients=allowed_clients,
             )
-            logger.debug(f"[Legacy] Retrieved {len(retrieved)} docs for client {client_id}")
+            logger.debug(f"[Legacy] Multi-scope retrieval for {client_id}: {len(retrieved)} docs")
             
             memory_hits = self.long_term.retrieve(query=request.message)
         
@@ -654,6 +920,165 @@ class ChatService:
                 logger.debug(f"Generated running summary for {conversation_id}")
         except Exception as e:
             logger.error(f"Failed to generate running summary: {e}")
+
+    async def _respond_with_text(
+        self,
+        request: ChatRequest,
+        text: str,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
+        """
+        Respond with a plain text message (no retrieval).
+        """
+        if request.stream:
+            async def stream_response() -> AsyncGenerator[str, None]:
+                encoded = text.replace('\n', '\\n')
+                yield f"data: {encoded}\n\n"
+                await self._post_turn_optimized(request, text, background_tasks)
+
+            return stream_response(), []
+
+        await self._post_turn_optimized(request, text, background_tasks)
+        return text, []
+
+    async def _respond_with_text_legacy(
+        self,
+        request: ChatRequest,
+        text: str,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> Tuple[str | AsyncGenerator[str, None], List[RetrievalHit]]:
+        """
+        Respond with a plain text message for legacy pipeline.
+        """
+        if request.stream:
+            async def stream_response() -> AsyncGenerator[str, None]:
+                encoded = text.replace('\n', '\\n')
+                yield f"data: {encoded}\n\n"
+                await self._post_turn(request, text, background_tasks)
+
+            return stream_response(), []
+
+        await self._post_turn(request, text, background_tasks)
+        return text, []
+
+    async def _generate_llm_response(
+        self,
+        *,
+        response_type: str,
+        user_message: str,
+        documents: Optional[List[Dict[str, Any]]] = None,
+        tool_results: Optional[Dict[str, Any]] = None,
+        errors: Optional[List[str]] = None,
+        client_label: Optional[str] = None,
+        needs_details: bool = False,
+    ) -> str:
+        """Generate an LLM-based response with structured inputs."""
+        return await generate_response(
+            lm_client=self.lm_client,
+            response_type=response_type,
+            user_message=user_message,
+            documents=documents,
+            tool_results=tool_results,
+            errors=errors,
+            client_label=client_label,
+            needs_details=needs_details,
+            allow_fallback_templates=False,
+        )
+
+    def _is_tool_only_query(self, message: str) -> bool:
+        """
+        Check if a query only needs tools, not document retrieval.
+        """
+        query_lower = message.lower()
+        calc_patterns = [
+            r"\b(calculate|compute|what is|how much is)\s+[\d\+\-\*\/\(\)\.\s]+",
+            r"\b\d+\s*[\+\-\*\/]\s*\d+",
+            r"\b(add|subtract|multiply|divide)\s+\d+",
+        ]
+        date_patterns = [
+            r"\b(what|current|today'?s?)\s+(date|time|day|month|year)\b",
+            r"\b(days?|weeks?|months?|years?)\s+(between|from|until|since)\b",
+            r"\bhow (long|many days)\b",
+        ]
+        for pattern in calc_patterns + date_patterns:
+            if re.search(pattern, query_lower, re.I):
+                return True
+        return False
+
+    def _extract_math_expression(self, message: str) -> Optional[str]:
+        """
+        Extract a math expression from a query.
+        """
+        math_pattern = r'[\d\.\s\+\-\*\/\(\)\^]+'
+        matches = re.findall(math_pattern, message)
+        for match in matches:
+            if any(op in match for op in ['+', '-', '*', '/', '^']):
+                return match.strip()
+        return None
+
+    def _is_datetime_query(self, message: str) -> bool:
+        """
+        Basic check for date/time intent.
+        """
+        query_lower = message.lower()
+        return any(
+            kw in query_lower
+            for kw in ["date", "time", "today", "now", "yesterday", "days", "weeks", "months", "years"]
+        )
+
+    def _needs_date_range(self, message: str) -> bool:
+        """
+        Check if a query likely needs two dates to answer.
+        """
+        query_lower = message.lower()
+        return any(kw in query_lower for kw in ["between", "from", "since", "until"])
+
+    async def _try_tool_only_response(self, message: str) -> Optional[ToolOnlyOutcome]:
+        """
+        Execute calculator/datetime tools for tool-only queries.
+        """
+        if not self._is_tool_only_query(message):
+            return None
+
+        if not settings.agent.tools_enabled:
+            return ToolOnlyOutcome(
+                tool_results={},
+                errors=["Tools are disabled for this request."],
+                needs_details=False,
+            )
+
+        tool_results: Dict[str, Any] = {}
+        errors: List[str] = []
+        needs_details = False
+
+        expression = self._extract_math_expression(message)
+        if expression:
+            calc_result = await CalculatorTool().execute(expression=expression)
+            if calc_result.success:
+                tool_results["calculator"] = calc_result.result
+            else:
+                errors.append(calc_result.error or "Calculator error")
+        elif any(op in message for op in ["+", "-", "*", "/"]):
+            needs_details = True
+
+        if self._is_datetime_query(message):
+            if self._needs_date_range(message):
+                needs_details = True
+            else:
+                dt_result = await DateTimeTool().execute(operation="now")
+                if dt_result.success:
+                    tool_results["datetime"] = dt_result.result
+                else:
+                    errors.append(dt_result.error or "DateTime error")
+
+        if tool_results or errors or needs_details:
+            return ToolOnlyOutcome(
+                tool_results=tool_results,
+                errors=errors,
+                needs_details=needs_details,
+            )
+
+        return None
     
     async def _generate_without_retrieval(
         self,

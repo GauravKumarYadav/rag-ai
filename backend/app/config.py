@@ -238,6 +238,42 @@ class MonitoringSettings(BaseModel):
     loki_retention_days: int = 7
 
 
+class AgentSettings(BaseModel):
+    """Agentic RAG settings.
+    
+    Controls the multi-agent orchestration system for enhanced RAG capabilities.
+    """
+    
+    # Master toggle for agentic pipeline
+    enabled: bool = False  # Disabled by default for backward compatibility
+    
+    # Iteration limits
+    max_iterations: int = 3      # Max reasoning iterations per agent
+    max_corrections: int = 2     # Max self-correction attempts
+    max_sub_queries: int = 3     # Max query decomposition sub-queries
+    
+    # Model routing
+    fast_model: str = "llama3.2:1b"
+    capable_model: str = "qwen3-vl-30b"
+    use_model_routing: bool = True  # Route tasks to appropriate model
+    
+    # Tool settings
+    tools_enabled: bool = True
+    allowed_tools: List[str] = ["calculator", "datetime"]  # SQL disabled by default
+    
+    # Latency budget (milliseconds)
+    max_latency_ms: int = 15000  # 15 second target
+    
+    # Feature toggles
+    query_decomposition_enabled: bool = True
+    multi_hop_retrieval_enabled: bool = True
+    self_correction_enabled: bool = True
+    
+    # Thresholds
+    min_complexity_for_decomposition: float = 0.3  # Below this, skip decomposition
+    min_coverage_for_retrieval: float = 0.6        # Below this, retrieve more
+
+
 class Settings(BaseSettings):
     """Root application settings.
     
@@ -268,6 +304,7 @@ class Settings(BaseSettings):
     logging: LoggingSettings = LoggingSettings()
     evaluation: EvaluationSettings = EvaluationSettings()
     monitoring: MonitoringSettings = MonitoringSettings()
+    agent: AgentSettings = AgentSettings()
     
     # ============================================================
     # LEGACY ALIASES - For backwards compatibility

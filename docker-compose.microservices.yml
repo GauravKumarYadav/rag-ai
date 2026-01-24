@@ -133,10 +133,10 @@ services:
       - "8010:8000"
     environment:
       # Provider selection: "lmstudio" or "ollama"
-      # Default to lmstudio when using remote LM Studio via ngrok
+      # Default to lmstudio when using LM Studio on host
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-lmstudio}
-      # LM Studio settings (default - remote via ngrok)
-      - LMSTUDIO_URL=${LLM__LMSTUDIO__BASE_URL:-https://45fe10225217.ngrok-free.app/v1}
+      # LM Studio settings (host.docker.internal to reach host)
+      - LMSTUDIO_URL=${LLM__LMSTUDIO__BASE_URL:-http://host.docker.internal:1234/v1}
       # Ollama settings (when EMBEDDING_PROVIDER=ollama)
       - OLLAMA_URL=http://ollama:11434
       # Model name (use provider-appropriate model)
@@ -145,6 +145,8 @@ services:
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-nomic-embed-text-v1.5}
       - REDIS_URL=redis://redis:6379
       - CACHE_TTL=86400
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
@@ -223,9 +225,9 @@ services:
       - EMBEDDING_SERVICE_URL=http://embedding-service:8000
       # LLM Provider settings (uses LM Studio by default)
       - LLM_PROVIDER=${LLM__PROVIDER:-lmstudio}
-      - LMSTUDIO_URL=${LLM__LMSTUDIO__BASE_URL:-https://45fe10225217.ngrok-free.app/v1}
+      - LMSTUDIO_URL=${LLM__LMSTUDIO__BASE_URL:-http://host.docker.internal:1234/v1}
       - OLLAMA_URL=http://ollama:11434
-      - CHAT_MODEL=${LLM__LMSTUDIO__MODEL:-deepseek-coder-v2-lite-instruct}
+      - CHAT_MODEL=${LLM__LMSTUDIO__MODEL:-openai/gpt-oss-20b}
       - CRON_SCHEDULE=${EVAL_CRON_SCHEDULE:-0 2 * * *}
       - CRON_TIMEZONE=UTC
       - RUN_ON_STARTUP=false
@@ -252,11 +254,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # LLM Configuration - Using remote LM Studio via ngrok
+      # LLM Configuration - Using LM Studio on host
       - LLM__PROVIDER=${LLM__PROVIDER:-lmstudio}
-      # LM Studio settings (remote via ngrok - your other PC)
-      - LLM__LMSTUDIO__BASE_URL=${LLM__LMSTUDIO__BASE_URL:-https://45fe10225217.ngrok-free.app/v1}
-      - LLM__LMSTUDIO__MODEL=${LLM__LMSTUDIO__MODEL:-deepseek-coder-v2-lite-instruct}
+      # LM Studio settings (host.docker.internal to reach host from container)
+      - LLM__LMSTUDIO__BASE_URL=${LLM__LMSTUDIO__BASE_URL:-http://host.docker.internal:1234/v1}
+      - LLM__LMSTUDIO__MODEL=${LLM__LMSTUDIO__MODEL:-openai/gpt-oss-20b}
       # Ollama settings (containerized fallback - only with --profile ollama)
       - LLM__OLLAMA__BASE_URL=http://ollama:11434
       - LLM__OLLAMA__MODEL=${LLM__OLLAMA__MODEL:-mistral:latest}
@@ -306,10 +308,17 @@ services:
       - MYSQL__PASSWORD=${MYSQL__PASSWORD:-Sarita1!@2024_4}
       # Disable in-process evaluation (handled by worker)
       - EVALUATION__SCHEDULER_ENABLED=false
+      # Agentic RAG Settings
+      - AGENT__ENABLED=${AGENT__ENABLED:-true}
+      - AGENT__MAX_ITERATIONS=${AGENT__MAX_ITERATIONS:-3}
+      - AGENT__TOOLS_ENABLED=${AGENT__TOOLS_ENABLED:-true}
     volumes:
       - ./data/raw:/app/data/raw:ro
       - ./data/bm25:/app/data/bm25
       - ./data/knowledge_graphs:/app/data/knowledge_graphs
+      - /Users/g0y01hx/Desktop/personal_work/chatbot/.cursor:/Users/g0y01hx/Desktop/personal_work/chatbot/.cursor
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mysql:
         condition: service_healthy

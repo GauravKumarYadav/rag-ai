@@ -51,6 +51,121 @@ This document describes the overall system architecture, key modules, and data f
 
 ---
 
+## Agentic RAG Pipeline (NEW)
+
+The system now supports an optional **Agentic RAG pipeline** that provides advanced capabilities beyond the simple RAG pattern:
+
+### Simple RAG vs Agentic RAG
+
+| Feature | Simple RAG | Agentic RAG |
+|---------|-----------|-------------|
+| Query handling | Single-pass | Query decomposition |
+| Retrieval | One retrieval step | Multi-hop retrieval |
+| Self-correction | None | Re-retrieval on failure |
+| Tool calling | None | Calculator, DateTime, SQL |
+| Reasoning | Linear pipeline | ReAct-style reasoning loops |
+
+### Agentic Pipeline Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Agentic RAG Pipeline                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                     ORCHESTRATOR AGENT                               │   │
+│  │  - Analyzes query complexity                                         │   │
+│  │  - Creates execution plan                                            │   │
+│  │  - Coordinates sub-agents                                            │   │
+│  │  - Manages correction loops                                          │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                              │                                              │
+│       ┌──────────────────────┼──────────────────────┐                      │
+│       ▼                      ▼                      ▼                      │
+│  ┌──────────┐         ┌──────────┐           ┌──────────┐                  │
+│  │  Query   │         │Retrieval │           │  Tool    │                  │
+│  │Decomposer│         │  Agent   │           │  Agent   │                  │
+│  └──────────┘         └──────────┘           └──────────┘                  │
+│       │                     │                      │                       │
+│       │ Sub-queries         │ Multi-hop            │ Calculator            │
+│       │                     │ retrieval            │ DateTime              │
+│       ▼                     ▼                      │ SQL Query             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                     SYNTHESIS AGENT                                  │   │
+│  │  - Combines context from all sources                                 │   │
+│  │  - Generates answer with citations                                   │   │
+│  │  - Integrates tool results                                           │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                              │                                              │
+│                              ▼                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                   VERIFICATION AGENT                                 │   │
+│  │  - Checks citation coverage                                          │   │
+│  │  - Validates factual grounding                                       │   │
+│  │  - Triggers re-retrieval if needed                                   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Agent Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **AgentState** | `agents/state.py` | Shared state with client isolation |
+| **BaseAgent** | `agents/base.py` | ReAct-style reasoning loop |
+| **OrchestratorAgent** | `agents/orchestrator.py` | Main coordinator |
+| **QueryDecomposer** | `agents/query_decomposer.py` | Breaks complex queries into sub-queries |
+| **RetrievalAgent** | `agents/retrieval_agent.py` | Adaptive multi-hop retrieval |
+| **SynthesisAgent** | `agents/synthesis_agent.py` | Combines results into answer |
+| **VerificationAgent** | `agents/verification_agent.py` | Self-correction with re-retrieval |
+| **ToolAgent** | `agents/tool_agent.py` | Tool selection and execution |
+| **ModelRouter** | `agents/model_router.py` | Routes tasks to appropriate models |
+
+### Tool Framework
+
+| Tool | File | Purpose |
+|------|------|---------|
+| **Calculator** | `tools/calculator.py` | Safe math expression evaluation |
+| **DateTime** | `tools/datetime_tool.py` | Date/time operations |
+| **SQLQuery** | `tools/sql_query.py` | Client-scoped metadata queries |
+
+### Configuration
+
+```bash
+# Enable agentic pipeline
+AGENT__ENABLED=true
+
+# Iteration limits
+AGENT__MAX_ITERATIONS=3
+AGENT__MAX_CORRECTIONS=2
+AGENT__MAX_SUB_QUERIES=3
+
+# Model routing (optional)
+AGENT__FAST_MODEL=llama3.2:1b
+AGENT__CAPABLE_MODEL=qwen3-vl-30b
+AGENT__USE_MODEL_ROUTING=true
+
+# Tools
+AGENT__TOOLS_ENABLED=true
+AGENT__ALLOWED_TOOLS=calculator,datetime
+```
+
+### When to Use Agentic RAG
+
+Use agentic RAG when you need:
+- **Complex query handling**: "Compare revenue of A and B"
+- **Multi-step reasoning**: "What changed between Q1 and Q2?"
+- **Tool augmentation**: Calculations, date operations
+- **Higher accuracy**: Self-correction improves answer quality
+
+Stick with simple RAG when:
+- Queries are straightforward
+- Latency is critical (<2s)
+- Resource constrained environment
+
+---
+
 ## Small Model RAG Optimization
 
 The system includes an optimized RAG pipeline specifically designed for smaller language models:
@@ -265,6 +380,41 @@ SESSION__RUNNING_SUMMARY_ENABLED=true
 
 ## Data Flow
 
+### Agentic Chat Request Flow (Multi-Agent Pipeline)
+```
+1. User sends message (REST or WebSocket)
+2. Auth middleware validates JWT
+3. Correlation ID middleware adds request tracing
+4. ChatService routes to agentic pipeline (if AGENT__ENABLED=true)
+5. Initialize AgentState with client isolation
+6. Orchestrator Agent:
+   a. Analyzes query complexity
+   b. Creates execution plan (simple/moderate/complex)
+7. Query Decomposer (if complex):
+   a. Breaks into 2-3 independent sub-queries
+   b. Allocates token budget per sub-query
+8. Retrieval Agent (for each sub-query):
+   a. Selects retrieval strategy
+   b. Executes hybrid search (BM25 + Vector)
+   c. Assesses coverage
+   d. Multi-hop retrieval if needed
+   e. KG expansion if coverage low
+9. Tool Agent (if tools needed):
+   a. Calculator for math expressions
+   b. DateTime for date operations
+   c. SQLQuery for metadata (client-scoped)
+10. Synthesis Agent:
+    a. Combines sub-query results
+    b. Integrates tool outputs
+    c. Generates answer with citations
+11. Verification Agent:
+    a. Checks citation coverage
+    b. Validates grounding
+    c. Triggers re-retrieval if failed (up to 2x)
+12. Update conversation state and memory
+13. Response returned to user
+```
+
 ### Optimized Chat Request Flow (Small Model Pipeline)
 ```
 1. User sends message (REST or WebSocket)
@@ -343,6 +493,7 @@ Settings are managed via `backend/app/config.py` with nested Pydantic models:
 | `llm` | provider, model, temperature, timeout, context_window |
 | `rag` | provider, chroma_db_path, embedding_model, **reranker settings**, **context budget** |
 | `session` | max_tokens, max_messages, **sliding_window_turns**, **episodic_memory** |
+| `agent` | **enabled**, **max_iterations**, **max_corrections**, **tools_enabled**, **model_routing** |
 | `mysql` | host, port, database, user, password |
 | `redis` | url, session_ttl, cache_ttl |
 | `logging` | level, log_dir, json_format, retention |

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.rag.vector_store import get_vector_store, get_client_vector_store
+from app.services.document_listing import list_documents as list_documents_helper
 from app.models.client import get_client_store
 from app.dependencies import get_current_user
 from app.auth.dependencies import get_allowed_clients, GLOBAL_CLIENT_ID
@@ -317,34 +318,8 @@ async def list_documents(
 ):
     """List all uploaded documents with metadata."""
     try:
-        if client_id:
-            store = get_client_vector_store(client_id)
-        else:
-            store = get_vector_store()
-        
-        # Get all documents from the store
-        all_docs = store.docs.get(include=["metadatas"])
-        
-        # Group by source file to get unique documents
-        documents = {}
-        for i, doc_id in enumerate(all_docs.get("ids", [])):
-            metadata = all_docs.get("metadatas", [])[i] if all_docs.get("metadatas") else {}
-            source = metadata.get("source", "Unknown")
-            
-            if source not in documents:
-                documents[source] = {
-                    "id": doc_id,
-                    "filename": os.path.basename(source) if source != "Unknown" else "Unknown",
-                    "source": source,
-                    "chunk_count": 1,
-                    "client_id": metadata.get("client_id"),
-                    "client_name": metadata.get("client_name"),
-                    "uploaded_at": metadata.get("uploaded_at", ""),
-                }
-            else:
-                documents[source]["chunk_count"] += 1
-        
-        return list(documents.values())
+        include_global = client_id is not None and client_id != GLOBAL_CLIENT_ID
+        return list_documents_helper(client_id=client_id, include_global=include_global)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
 

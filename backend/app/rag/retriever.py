@@ -11,17 +11,28 @@ Security: All retrieval methods now support mandatory client_id filtering
 to prevent cross-client data leakage.
 """
 
+import json
 import logging
 import time
 from functools import lru_cache
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from app.config import settings
 from app.models.schemas import RetrievalHit
 from app.rag.vector_store import VectorStore, get_vector_store, get_client_vector_store
 from app.rag.reranker import Reranker, MMRSelector, get_reranker, get_mmr_selector
+from app.rag.hybrid_search import get_hybrid_search
 
 logger = logging.getLogger(__name__)
+_DEBUG_LOG_PATH = "/Users/g0y01hx/Desktop/personal_work/chatbot/.cursor/debug.log"
+
+
+def _debug_log(payload: dict) -> None:
+    try:
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(payload) + "\n")
+    except Exception:
+        pass
 
 
 class Retriever:
@@ -314,6 +325,143 @@ class Retriever:
                     return True
         
         return False
+
+
+def resolve_retrieval_scopes(
+    client_id: Optional[str],
+    allowed_clients: Optional[Iterable[str]] = None,
+) -> List[str]:
+    """
+    Resolve which client scopes should be searched.
+
+    Rules:
+    - If client_id is None or "global": search global only.
+    - If client_id is provided: search client + global (if client is allowed).
+    """
+    if not client_id or client_id == "global":
+        return ["global"]
+
+    if allowed_clients and client_id not in allowed_clients:
+        logger.warning("Client not in allowed_clients; falling back to global scope")
+        return ["global"]
+
+    return [client_id, "global"]
+
+
+def _merge_hits_by_scope(hits_by_scope: Dict[str, List[RetrievalHit]]) -> List[RetrievalHit]:
+    """
+    Merge retrieval hits from multiple scopes, de-duplicating by id.
+    Prefers lower score (higher relevance). If equal, prefers non-global.
+    """
+    merged: Dict[str, RetrievalHit] = {}
+
+    for scope, hits in hits_by_scope.items():
+        for hit in hits:
+            metadata = dict(hit.metadata) if hit.metadata else {}
+            metadata.setdefault("scope", scope)
+            if scope != "global":
+                metadata.setdefault("client_id", scope)
+
+            candidate = RetrievalHit(
+                id=hit.id,
+                content=hit.content,
+                score=hit.score,
+                metadata=metadata,
+            )
+
+            existing = merged.get(hit.id)
+            if not existing:
+                merged[hit.id] = candidate
+                continue
+
+            if candidate.score < existing.score:
+                merged[hit.id] = candidate
+                continue
+
+            if candidate.score == existing.score:
+                if candidate.metadata.get("scope") != "global" and existing.metadata.get("scope") == "global":
+                    merged[hit.id] = candidate
+
+    return list(merged.values())
+
+
+def search_with_scopes(
+    *,
+    query: str,
+    client_id: Optional[str],
+    top_k: int,
+    fetch_k: Optional[int] = None,
+    metadata_filters: Optional[Dict] = None,
+    allowed_clients: Optional[Iterable[str]] = None,
+) -> List[RetrievalHit]:
+    """
+    Search across client + global scopes and merge results.
+    """
+    scopes = resolve_retrieval_scopes(client_id, allowed_clients)
+    fetch_k = fetch_k or settings.rag.initial_fetch_k
+    # #region agent log
+    _debug_log({
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "H3",
+        "location": "retriever.py:search_with_scopes",
+        "message": "Search start",
+        "data": {
+            "client_id": client_id,
+            "scopes": scopes,
+            "top_k": top_k,
+            "fetch_k": fetch_k,
+            "allowed_clients": list(allowed_clients) if allowed_clients else None,
+        },
+        "timestamp": int(time.time() * 1000),
+    })
+    # #endregion agent log
+
+    hits_by_scope: Dict[str, List[RetrievalHit]] = {}
+
+    for scope in scopes:
+        try:
+            if settings.rag.bm25_enabled:
+                hybrid = get_hybrid_search(client_id=scope)
+                hits = hybrid.search(
+                    query=query,
+                    top_k=top_k,
+                    fetch_k=fetch_k,
+                    use_reranker=settings.rag.reranker_enabled,
+                    where=metadata_filters,
+                )
+            else:
+                retriever = get_retriever()
+                hits = retriever.search_with_client_filter(
+                    query=query,
+                    client_id=scope,
+                    top_k=top_k,
+                    fetch_k=fetch_k,
+                    metadata_filters=metadata_filters,
+                )
+        except Exception as e:
+            logger.warning(f"Multi-scope retrieval failed for scope '{scope}': {e}")
+            hits = []
+
+        hits_by_scope[scope] = hits
+
+    merged = _merge_hits_by_scope(hits_by_scope)
+    merged.sort(key=lambda h: h.score)
+    # #region agent log
+    _debug_log({
+        "sessionId": "debug-session",
+        "runId": "run1",
+        "hypothesisId": "H4",
+        "location": "retriever.py:search_with_scopes",
+        "message": "Search end",
+        "data": {
+            "counts_by_scope": {scope: len(hits) for scope, hits in hits_by_scope.items()},
+            "merged_count": len(merged),
+        },
+        "timestamp": int(time.time() * 1000),
+    })
+    # #endregion agent log
+    return merged[:top_k]
 
 
 @lru_cache(maxsize=1)

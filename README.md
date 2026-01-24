@@ -17,6 +17,7 @@ A fully local, privacy-focused AI chatbot with RAG (Retrieval-Augmented Generati
 - 🕸️ **Knowledge Graph** - Per-client entity graphs for query expansion
 - ✅ **Answer Verification** - Citation enforcement and grounding checks
 - 🧠 **Long-term Memory** - Automatic conversation summarization and recall
+- 🤖 **Agentic RAG** - Multi-agent orchestration with query decomposition, multi-hop retrieval, self-correction, and tool calling
 - 👥 **Multi-Client Isolation** - Strict client-based data isolation with user-client access control
 - 🔄 **Real-time Streaming** - SSE and WebSocket streaming responses
 - 📊 **Markdown Tables** - Properly formatted tables in responses
@@ -179,6 +180,20 @@ cp .env.example .env
 | `RAG__SKIP_RETRIEVAL_FOR_CHITCHAT` | `true` | Skip RAG for chitchat intents |
 | `RAG__CONFIDENCE_GATING_ENABLED` | `true` | Skip stages when confidence is high |
 | `RAG__KG_EXPANSION_GATING` | `true` | Only expand KG when initial recall is low |
+
+### Agentic RAG Settings (NEW)
+
+Enable multi-agent orchestration for complex queries:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT__ENABLED` | `false` | Enable agentic pipeline |
+| `AGENT__MAX_ITERATIONS` | `3` | Max reasoning iterations per agent |
+| `AGENT__MAX_CORRECTIONS` | `2` | Max self-correction attempts |
+| `AGENT__MAX_SUB_QUERIES` | `3` | Max query decomposition sub-queries |
+| `AGENT__TOOLS_ENABLED` | `true` | Enable tool calling |
+| `AGENT__ALLOWED_TOOLS` | `calculator,datetime` | Comma-separated list of allowed tools |
+| `AGENT__USE_MODEL_ROUTING` | `true` | Route tasks to appropriate models |
 
 ### Vision Models
 

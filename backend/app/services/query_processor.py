@@ -10,8 +10,10 @@ By routing and rewriting queries before retrieval, we avoid
 unnecessary RAG calls and improve retrieval quality.
 """
 
+import json
 import re
 import logging
+import time
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
@@ -20,6 +22,15 @@ from typing import List, Optional, Set
 from app.memory.conversation_state import ConversationState
 
 logger = logging.getLogger(__name__)
+_DEBUG_LOG_PATH = "/Users/g0y01hx/Desktop/personal_work/chatbot/.cursor/debug.log"
+
+
+def _debug_log(payload: dict) -> None:
+    try:
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(payload) + "\n")
+    except Exception:
+        pass
 
 
 class Intent(Enum):
@@ -29,6 +40,7 @@ class Intent(Enum):
     FOLLOW_UP = "follow_up"         # Follow-up on previous context - resolve refs first
     ACTION_REQUEST = "action"       # Request to do something - may need retrieval
     CLARIFICATION = "clarification" # Asking for clarification - use state
+    DOCUMENT_LIST = "document_list" # Request to list available documents
 
 
 @dataclass
@@ -52,6 +64,28 @@ CHITCHAT_PATTERNS = [
     r"^(yes|no|ok|okay|sure|alright|fine|great|cool|got it)[\s!?.]*$",
     r"^(help|what can you do|who are you)[\s!?.]*$",
     r"^(nice|awesome|perfect|excellent)[\s!?.]*$",
+]
+
+# Patterns for document listing requests
+DOCUMENT_LIST_PATTERNS = [
+    r"\bwhat (documents|files) (are )?available\b",
+    r"\bwhich (documents|files) (do you have|are available)\b",
+    r"\blist (all )?(documents|files|docs)\b",
+    r"\bshow (me )?(all )?(documents|files|docs)\b",
+    r"\bwhat (docs|documents|files) (do you have|can you see)\b",
+    r"\bdocuments available\b",
+    r"\bavailable documents\b",
+]
+
+# Patterns for clarification requests
+CLARIFICATION_PATTERNS = [
+    r"\bwhat do you mean\b",
+    r"\bcan you clarify\b",
+    r"\bclarify that\b",
+    r"\bI don't understand\b",
+    r"\bwhat does that mean\b",
+    r"\bcan you explain\b",
+    r"\bexplain that\b",
 ]
 
 # Patterns indicating follow-up/reference to previous context
@@ -84,6 +118,27 @@ ACTION_PATTERNS = [
     r"^(please\s+)?(save|store|remember|note)",
 ]
 
+INTENT_CLASSIFICATION_PROMPT = """You are an intent classifier for a document assistant.
+
+Classify the user's intent into one of:
+- chitchat: greetings, thanks, acknowledgements, small talk
+- document_list: asking to list available documents or files
+- clarification: asking "what do you mean?" or for clarification
+- follow_up: referring to prior context ("that document", "as we discussed")
+- action: asking the assistant to do something
+- question: information request that likely needs document retrieval
+
+Return JSON ONLY:
+{{
+  "intent": "chitchat|document_list|clarification|follow_up|action|question",
+  "confidence": 0.0,
+  "needs_retrieval": true/false
+}}
+
+User message: {message}
+Conversation context: {context}
+"""
+
 
 class QueryProcessor:
     """
@@ -93,6 +148,8 @@ class QueryProcessor:
     
     def __init__(self) -> None:
         self._chitchat_patterns = [re.compile(p, re.IGNORECASE) for p in CHITCHAT_PATTERNS]
+        self._document_list_patterns = [re.compile(p, re.IGNORECASE) for p in DOCUMENT_LIST_PATTERNS]
+        self._clarification_patterns = [re.compile(p, re.IGNORECASE) for p in CLARIFICATION_PATTERNS]
         self._reference_patterns = [(re.compile(p, re.IGNORECASE), name) for p, name in REFERENCE_PATTERNS]
         self._action_patterns = [re.compile(p, re.IGNORECASE) for p in ACTION_PATTERNS]
     
@@ -116,10 +173,22 @@ class QueryProcessor:
         original = message.strip()
         
         # Step 1: Classify intent
-        intent, confidence = self._classify_intent(original, state)
+        intent: Optional[Intent] = None
+        confidence = 0.0
+        llm_needs_retrieval: Optional[bool] = None
+        if lm_client:
+            llm_result = await self._classify_intent_with_llm(original, state, lm_client)
+            if llm_result:
+                intent, confidence, llm_needs_retrieval = llm_result
+        
+        if intent is None:
+            intent, confidence = self._classify_intent(original, state)
         
         # Step 2: Check if retrieval is needed based on intent
-        needs_retrieval = self._needs_retrieval(intent, original)
+        if llm_needs_retrieval is None:
+            needs_retrieval = self._needs_retrieval(intent, original)
+        else:
+            needs_retrieval = llm_needs_retrieval
         
         # Step 3: Resolve references if this is a follow-up
         resolved_refs = []
@@ -134,6 +203,22 @@ class QueryProcessor:
         
         logger.debug(f"Query processed: intent={intent.value}, retrieval={needs_retrieval}, "
                     f"original='{original[:50]}...', search='{search_query[:50]}...'")
+        # #region agent log
+        _debug_log({
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "H2",
+            "location": "query_processor.py:process",
+            "message": "Intent classification result",
+            "data": {
+                "intent": intent.value,
+                "needs_retrieval": needs_retrieval,
+                "confidence": confidence,
+                "resolved_references": resolved_refs,
+            },
+            "timestamp": int(time.time() * 1000),
+        })
+        # #endregion agent log
         
         return QueryResult(
             intent=intent,
@@ -156,6 +241,16 @@ class QueryProcessor:
         for pattern in self._chitchat_patterns:
             if pattern.match(msg_lower):
                 return Intent.CHITCHAT, 0.95
+
+        # Check for document listing requests
+        for pattern in self._document_list_patterns:
+            if pattern.search(msg_lower):
+                return Intent.DOCUMENT_LIST, 0.9
+
+        # Check for clarification requests
+        for pattern in self._clarification_patterns:
+            if pattern.search(msg_lower):
+                return Intent.CLARIFICATION, 0.85
         
         # Check for reference patterns (follow-up)
         ref_matches = []
@@ -186,6 +281,67 @@ class QueryProcessor:
         
         # Default to question (safer to retrieve than miss)
         return Intent.QUESTION, 0.5
+
+    def _build_state_hint(self, state: ConversationState) -> str:
+        """Build a minimal context hint for LLM intent classification."""
+        if state.is_empty():
+            return "none"
+        parts = []
+        if state.running_summary:
+            parts.append(f"summary: {state.running_summary[:200]}")
+        if state.current_task:
+            parts.append(f"task: {state.current_task}")
+        if state.client_context:
+            parts.append(f"client: {state.client_context}")
+        if state.entities:
+            sample_entities = list(state.entities.keys())[:5]
+            parts.append(f"entities: {', '.join(sample_entities)}")
+        return "; ".join(parts) if parts else "none"
+
+    async def _classify_intent_with_llm(
+        self,
+        message: str,
+        state: ConversationState,
+        lm_client: object,
+    ) -> Optional[tuple[Intent, float, Optional[bool]]]:
+        """Classify intent using the LLM, falling back if parsing fails."""
+        context_hint = self._build_state_hint(state)
+        prompt = INTENT_CLASSIFICATION_PROMPT.format(
+            message=message,
+            context=context_hint,
+        )
+        try:
+            response = await lm_client.chat(
+                [
+                    {"role": "system", "content": "You are a precise intent classifier."},
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False,
+            )
+        except Exception:
+            return None
+
+        if not response:
+            return None
+
+        try:
+            json_match = re.search(r"\{[\s\S]*\}", response)
+            if not json_match:
+                return None
+            data = json.loads(json_match.group())
+            intent_value = str(data.get("intent", "")).strip().lower()
+            intent_map = {i.value: i for i in Intent}
+            if intent_value not in intent_map:
+                return None
+            confidence = float(data.get("confidence", 0.6))
+            needs_retrieval = data.get("needs_retrieval")
+            if isinstance(needs_retrieval, str):
+                needs_retrieval = needs_retrieval.lower() == "true"
+            if not isinstance(needs_retrieval, bool):
+                needs_retrieval = None
+            return intent_map[intent_value], confidence, needs_retrieval
+        except Exception:
+            return None
     
     def _has_retrieval_keywords(self, message: str) -> bool:
         """Check if message contains keywords suggesting retrieval is needed."""
@@ -199,6 +355,9 @@ class QueryProcessor:
         
         if intent == Intent.CLARIFICATION:
             # Usually can answer from state
+            return False
+
+        if intent == Intent.DOCUMENT_LIST:
             return False
         
         if intent in (Intent.QUESTION, Intent.FOLLOW_UP):
@@ -342,6 +501,11 @@ class QueryProcessor:
         for pattern in self._chitchat_patterns:
             if pattern.match(msg_lower):
                 return False, "chitchat"
+
+        # Check for document listing
+        for pattern in self._document_list_patterns:
+            if pattern.search(msg_lower):
+                return False, "document_list"
         
         # Check for retrieval keywords
         if self._has_retrieval_keywords(msg_lower):
