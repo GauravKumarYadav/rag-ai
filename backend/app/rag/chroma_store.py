@@ -207,26 +207,17 @@ class ChromaVectorStore(VectorStoreBase):
         
         Raises EmbeddingMismatchError if there's a mismatch.
         """
-        from app.core.metrics import record_embedding_mismatch
-        
         # Sample a document to check its fingerprint
         try:
             sample = self.docs.get(limit=1, include=["metadatas"])
             if sample["ids"] and sample["metadatas"]:
                 stored_fp = sample["metadatas"][0].get("embedding_fingerprint")
                 if stored_fp and stored_fp != self._current_fingerprint:
-                    record_embedding_mismatch()
                     logger.warning(
                         f"Embedding configuration mismatch detected! "
                         f"Stored: {stored_fp}, Current: {self._current_fingerprint}. "
                         f"Reindexing recommended."
                     )
-                    # Don't raise by default - just warn
-                    # Uncomment below to enforce strict matching:
-                    # raise EmbeddingMismatchError(
-                    #     f"Embedding config changed: {stored_fp} -> {self._current_fingerprint}. "
-                    #     "Reindex required."
-                    # )
         except Exception as e:
             logger.debug(f"Could not verify embedding fingerprint: {e}")
     
@@ -446,14 +437,11 @@ class ChromaClientVectorStore(ClientVectorStoreBase):
         
         Logs a warning if there's a mismatch.
         """
-        from app.core.metrics import record_embedding_mismatch
-        
         try:
             sample = self.docs.get(limit=1, include=["metadatas"])
             if sample["ids"] and sample["metadatas"]:
                 stored_fp = sample["metadatas"][0].get("embedding_fingerprint")
                 if stored_fp and stored_fp != self._current_fingerprint:
-                    record_embedding_mismatch()
                     logger.warning(
                         f"Embedding mismatch for client {self.client_id}! "
                         f"Stored: {stored_fp}, Current: {self._current_fingerprint}. "
@@ -483,3 +471,154 @@ class ChromaClientVectorStore(ClientVectorStoreBase):
         if not stored:
             return True
         return verify_embedding_fingerprint(stored)
+
+
+class GlobalVectorStore:
+    """
+    Global vector store for documents available to all clients.
+    
+    Uses a dedicated 'global_docs' collection that can be searched
+    alongside client-specific collections.
+    """
+    
+    GLOBAL_DOCS_COLLECTION = "global_docs"
+    GLOBAL_MEMORIES_COLLECTION = "global_memories"
+    
+    def __init__(self, config: VectorStoreConfig) -> None:
+        self.config = config
+        
+        # Initialize ChromaDB client
+        if config.url:
+            url = config.url.rstrip("/")
+            if url.startswith("http://"):
+                url = url[7:]
+            elif url.startswith("https://"):
+                url = url[8:]
+            
+            if ":" in url:
+                host, port_str = url.rsplit(":", 1)
+                port = int(port_str)
+            else:
+                host = url
+                port = 8000
+            
+            self.chroma_client = chromadb.HttpClient(host=host, port=port)
+        else:
+            self.chroma_client = chromadb.PersistentClient(path=config.path)
+        
+        self.embedding_fn = get_embedding_function()
+        
+        # Create global collections
+        prefix = config.collection_prefix
+        self.docs_name = f"{prefix}{self.GLOBAL_DOCS_COLLECTION}" if prefix else self.GLOBAL_DOCS_COLLECTION
+        self.memories_name = f"{prefix}{self.GLOBAL_MEMORIES_COLLECTION}" if prefix else self.GLOBAL_MEMORIES_COLLECTION
+        
+        self.docs = self.chroma_client.get_or_create_collection(
+            name=self.docs_name,
+            embedding_function=self.embedding_fn
+        )
+        self.memories = self.chroma_client.get_or_create_collection(
+            name=self.memories_name,
+            embedding_function=self.embedding_fn
+        )
+    
+    def add_documents(
+        self,
+        contents: List[str],
+        ids: List[str],
+        metadatas: Optional[List[Dict]] = None,
+        embeddings: Optional[List[List[float]]] = None,
+    ) -> None:
+        """Add documents to the global collection."""
+        if metadatas:
+            for meta in metadatas:
+                meta["client_id"] = "global"
+                meta["is_global"] = True
+        else:
+            metadatas = [{"client_id": "global", "is_global": True} for _ in contents]
+        
+        kwargs = {"documents": contents, "ids": ids, "metadatas": metadatas}
+        if embeddings:
+            kwargs["embeddings"] = embeddings
+        self.docs.add(**kwargs)
+    
+    def query(
+        self,
+        query: str,
+        top_k: int = 4,
+        where: Optional[Dict] = None,
+    ) -> List[RetrievalHit]:
+        """Query the global documents collection."""
+        kwargs = {"query_texts": [query], "n_results": top_k}
+        if where:
+            kwargs["where"] = where
+        
+        results = self.docs.query(**kwargs)
+        
+        hits: List[RetrievalHit] = []
+        docs = results.get("documents", [[]])[0]
+        ids = results.get("ids", [[]])[0]
+        metadatas = results.get("metadatas", [[]])[0]
+        distances = results.get("distances", [[]])[0]
+        
+        for doc_id, content, meta, score in zip(ids, docs, metadatas, distances):
+            hits.append(RetrievalHit(
+                id=doc_id,
+                content=content,
+                score=score,
+                metadata=meta or {}
+            ))
+        return hits
+    
+    def delete(
+        self,
+        ids: Optional[List[str]] = None,
+        where: Optional[Dict] = None,
+    ) -> int:
+        """Delete documents from the global collection."""
+        count_before = self.docs.count()
+        
+        if ids:
+            self.docs.delete(ids=ids)
+        elif where:
+            self.docs.delete(where=where)
+        
+        count_after = self.docs.count()
+        return count_before - count_after
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get statistics for the global collection."""
+        return {
+            "provider": "chromadb",
+            "collection": "global",
+            "document_count": self.docs.count(),
+            "memory_count": self.memories.count(),
+        }
+    
+    def get(self, ids: List[str]) -> Optional[Dict]:
+        """Get documents by IDs (for hot-reload verification)."""
+        try:
+            result = self.docs.get(ids=ids, include=["documents", "metadatas"])
+            if result["ids"]:
+                return result
+        except Exception:
+            pass
+        return None
+
+
+# Singleton for global vector store
+_global_vector_store: Optional[GlobalVectorStore] = None
+
+
+def get_global_vector_store() -> GlobalVectorStore:
+    """Get or create the global vector store singleton."""
+    global _global_vector_store
+    if _global_vector_store is None:
+        from app.config import settings
+        config = VectorStoreConfig(
+            path=settings.rag.chroma_db_path,
+            url=settings.rag.url,
+            collection_prefix=settings.rag.collection_prefix,
+        )
+        _global_vector_store = GlobalVectorStore(config)
+    return _global_vector_store

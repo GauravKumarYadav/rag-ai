@@ -133,17 +133,7 @@ class HybridSearch:
         Returns:
             HybridSearchResult with hits and stats
         """
-        from app.core.metrics import (
-            record_retrieval_duration,
-            record_retrieval_results,
-            record_cross_client_filter,
-            record_rerank_duration,
-        )
-        
         start_time = time.time()
-        
-        # Record that we're applying client filter
-        record_cross_client_filter(self.client_id)
         
         # 1. Get candidates from vector search (client-scoped)
         vector_hits = self.vector_store.query(
@@ -168,16 +158,13 @@ class HybridSearch:
         
         # 4. Optionally rerank with cross-encoder
         if use_reranker and self.reranker and fused_hits:
-            rerank_start = time.time()
             fused_hits = self.reranker.rerank(query, fused_hits, top_k=top_k)
-            record_rerank_duration(time.time() - rerank_start)
             logger.debug(f"Reranker returned {len(fused_hits)} results")
         else:
             fused_hits = fused_hits[:top_k]
         
-        # Record metrics
-        record_retrieval_duration(self.client_id, "hybrid", time.time() - start_time)
-        record_retrieval_results(self.client_id, len(fused_hits))
+        duration = time.time() - start_time
+        logger.debug(f"Hybrid search completed in {duration:.3f}s, {len(fused_hits)} results")
         
         return HybridSearchResult(
             hits=fused_hits,

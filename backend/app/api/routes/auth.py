@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from app.auth.jwt import create_access_token
 from app.auth.password import verify_password
 from app.auth.dependencies import get_current_user
-from app.db.mysql import get_user_by_username
+from app.auth.users import get_user_by_username, get_user_client_ids
+from app.config import settings
 
 
 router = APIRouter()
@@ -45,9 +46,11 @@ async def login(request: LoginRequest):
     For WebSocket connections, pass the token as a query parameter:
     `/chat/ws/{client_id}?token=<access_token>`
     
-    The token includes the user's allowed_clients for client-scoped access control.
+    Default admin credentials:
+    - Username: admin
+    - Password: admin123
     """
-    # Get user from database
+    # Get user from Redis-backed store
     user = await get_user_by_username(request.username)
     
     if user is None:
@@ -74,9 +77,6 @@ async def login(request: LoginRequest):
         )
     
     # Fetch user's allowed clients for embedding in JWT
-    from app.db.mysql import get_user_client_ids
-    from app.config import settings
-    
     allowed_clients = []
     if not user.get("is_superuser", False):
         # Regular users get their assigned client IDs

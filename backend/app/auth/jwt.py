@@ -62,10 +62,10 @@ async def create_access_token_with_clients(
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
-    Create a JWT access token with allowed_clients fetched from database.
+    Create a JWT access token with allowed_clients fetched from Redis.
     
     This is an async version that looks up the user's allowed clients
-    from the database and embeds them in the token.
+    and embeds them in the token.
     
     Args:
         user_id: The unique user identifier
@@ -76,9 +76,9 @@ async def create_access_token_with_clients(
     Returns:
         Encoded JWT token string with allowed_clients claim
     """
-    from app.db.mysql import get_user_client_ids
+    from app.auth.users import get_user_client_ids
     
-    # Fetch allowed clients from database
+    # Fetch allowed clients from Redis
     allowed_clients = await get_user_client_ids(user_id)
     
     return create_access_token(

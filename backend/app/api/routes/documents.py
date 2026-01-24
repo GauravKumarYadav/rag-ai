@@ -100,20 +100,7 @@ def extract_text_with_docling(file_path: str, fast_mode: bool = False) -> str:
         raise ValueError(f"Failed to extract text with Docling: {e}")
 
 
-def extract_text_from_pdf_pypdf(content: bytes) -> str:
-    """Fallback: Extract text from PDF using pypdf (text-based PDFs only)."""
-    try:
-        from pypdf import PdfReader
-        pdf_file = io.BytesIO(content)
-        reader = PdfReader(pdf_file)
-        text_parts = []
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text_parts.append(page_text)
-        return "\n\n".join(text_parts)
-    except Exception as e:
-        raise ValueError(f"Failed to parse PDF: {e}")
+# Note: pypdf fallback removed - using Docling only for all document extraction
 
 
 @router.post("/upload", response_model=DocumentUploadResponse, summary="Upload documents")
@@ -147,7 +134,6 @@ async def upload_documents(
     - Rich metadata including page numbers and section headings
     - Client isolation enforced
     """
-    from app.core.metrics import record_chunks_created
     from app.rag.embeddings import get_embedding_fingerprint
     
     # Handle client creation/lookup
@@ -242,10 +228,6 @@ async def upload_documents(
         all_chunks.extend(chunks)
         all_chunk_ids.extend([c.id for c in chunks])
         doc_count += 1
-        
-        # Record metrics
-        doc_type = os.path.splitext(filename)[1].lower() or "unknown"
-        record_chunks_created(actual_client_id, doc_type, len(chunks))
 
     if all_chunks:
         # Prepare data for vector store

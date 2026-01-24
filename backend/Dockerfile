@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create data directories
-RUN mkdir -p /app/data/chroma /app/data/raw
+RUN mkdir -p /app/data/chroma /app/data/raw /app/data/bm25
 
 # Expose port
 EXPOSE 8000

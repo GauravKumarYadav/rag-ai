@@ -4,41 +4,37 @@ uvicorn[standard]>=0.27.0
 httpx>=0.26.0
 python-multipart>=0.0.6
 
-# Document Processing
+# Document Processing (Docling for unified extraction)
 pypdf>=4.0.0
 docling>=2.0.0
-# RapidOCR for lightweight OCR (uses onnxruntime, no torch needed)
 rapidocr-onnxruntime>=1.3.0
 
 # Pydantic
 pydantic[email]>=2.5.0
 pydantic-settings>=2.1.0
 
-# ChromaDB client (connects to ChromaDB server via HTTP)
+# ChromaDB (vector store)
 chromadb>=0.4.22
 
-# Redis for session persistence
+# Redis (session persistence, memory)
 redis>=5.0.0
 
 # Authentication
 python-jose[cryptography]>=3.3.0
 bcrypt>=4.0.0
 
-# MySQL Audit Logging
-aiomysql>=0.2.0
-cryptography>=41.0.0
+# LangGraph / LangChain / LangSmith
+langchain>=0.1.0
+langchain-core>=0.1.0
+langchain-openai>=0.1.0
+langgraph>=0.0.30
+langsmith>=0.1.0
 
-# Observability
-prometheus-fastapi-instrumentator>=6.1.0
-
-# Scheduling
-apscheduler>=3.10.4
+# RAG Optimization
+sentence-transformers>=2.2.0  # Cross-encoder reranking
+rank-bm25>=0.2.2  # BM25 keyword search for hybrid retrieval
 
 # Testing
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
 respx>=0.20.0
-
-# Small Model RAG Optimization
-sentence-transformers>=2.2.0  # Cross-encoder reranking
-rank-bm25>=0.2.2  # BM25 keyword search for hybrid retrieval

@@ -1,17 +1,6 @@
-"""Database module for MySQL audit logging."""
+"""Database module - simplified without MySQL."""
 
-from app.db.mysql import (
-    get_db_pool,
-    close_db_pool,
-    init_audit_tables,
-    log_audit_event,
-    get_user_by_username,
-)
+# Empty module - MySQL has been removed
+# Authentication is handled via Redis-backed user storage
 
-__all__ = [
-    "get_db_pool",
-    "close_db_pool",
-    "init_audit_tables",
-    "log_audit_event",
-    "get_user_by_username",
-]
+__all__ = []

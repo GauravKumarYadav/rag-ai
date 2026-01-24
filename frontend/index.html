@@ -1348,7 +1348,6 @@
                     <div class="chat-client-selector">
                         <label for="chatClientSelect"><i class="fas fa-building"></i></label>
                         <select class="chat-client-select" id="chatClientSelect" title="Select client context">
-                            <option value="">All Documents</option>
                         </select>
                     </div>
                 </div>
@@ -1433,7 +1432,6 @@
             <label>Context / Client</label>
             <div class="client-select-wrapper">
                 <select class="client-select" id="clientSelect">
-                    <option value="">All Documents</option>
                 </select>
                 <button class="add-client-btn" id="addClientBtn" title="Add new client">
                     <i class="fas fa-plus"></i>
@@ -1671,7 +1669,9 @@
         function connectWebSocket() {
             if (!authToken || !currentConversationId) return;
 
-            const wsUrl = `${WS_BASE}/chat/ws/${currentConversationId}?token=${authToken}`;
+            // WebSocket path expects client_id; fall back to 'global' if none selected
+            const wsClientId = currentClientId || 'global';
+            const wsUrl = `${WS_BASE}/chat/ws/${wsClientId}?token=${authToken}`;
             websocket = new WebSocket(wsUrl);
 
             websocket.onopen = () => {
@@ -2281,14 +2281,19 @@
 
         function renderClientSelector() {
             const select = document.getElementById('clientSelect');
-            select.innerHTML = '<option value="">All Documents</option>';
+            select.innerHTML = '';
             
-            clients.forEach(client => {
+            clients.forEach((client, index) => {
                 const option = document.createElement('option');
                 option.value = client.id;
                 option.textContent = client.name;
-                if (client.id === currentClientId) {
+                // Select current client, or first client if none selected
+                if (client.id === currentClientId || (!currentClientId && index === 0)) {
                     option.selected = true;
+                    if (!currentClientId && index === 0) {
+                        currentClientId = client.id;
+                        localStorage.setItem('current_client_id', client.id);
+                    }
                 }
                 select.appendChild(option);
             });
@@ -2298,14 +2303,19 @@
             const select = document.getElementById('chatClientSelect');
             if (!select) return;
             
-            select.innerHTML = '<option value="">All Documents</option>';
+            select.innerHTML = '';
             
-            clients.forEach(client => {
+            clients.forEach((client, index) => {
                 const option = document.createElement('option');
                 option.value = client.id;
                 option.textContent = client.name;
-                if (client.id === currentClientId) {
+                // Select current client, or first client if none selected
+                if (client.id === currentClientId || (!currentClientId && index === 0)) {
                     option.selected = true;
+                    if (!currentClientId && index === 0) {
+                        currentClientId = client.id;
+                        localStorage.setItem('current_client_id', client.id);
+                    }
                 }
                 select.appendChild(option);
             });
