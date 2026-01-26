@@ -761,7 +761,16 @@ input:focus, textarea:focus, select:focus {
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    transition: transform 0.3s ease;
+    transition: transform 0.3s ease, width 0.3s ease, margin-left 0.3s ease;
+}
+
+/* Sidebar collapsed state (works on all screen sizes) */
+.sidebar:not(.open) {
+    margin-left: -260px;
+}
+
+.sidebar.open {
+    margin-left: 0;
 }
 
 .sidebar-header {
@@ -1061,13 +1070,20 @@ pre:hover .copy-btn {
         left: 0;
         top: 0;
         bottom: 0;
-        transform: translateX(-100%);
         z-index: 30;
         box-shadow: 5px 0 20px rgba(0,0,0,0.1);
+        margin-left: 0;
+        transform: translateX(-100%);
     }
     
     .sidebar.open {
         transform: translateX(0);
+        margin-left: 0;
+    }
+    
+    .sidebar:not(.open) {
+        transform: translateX(-100%);
+        margin-left: 0;
     }
     
     .documents-panel {

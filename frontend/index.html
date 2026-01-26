@@ -12,7 +12,7 @@
 <body>
     <div class="app-container">
         <!-- Sidebar -->
-        <aside class="sidebar" id="sidebar">
+        <aside class="sidebar open" id="sidebar">
             <div class="sidebar-header">
                 <div class="flex items-center gap-2 font-semibold">
                     <div class="w-8 h-8 rounded bg-accent-solid text-inverse flex items-center justify-center">
@@ -50,7 +50,7 @@
         <main class="main-content">
             <header class="chat-header">
                 <div class="flex items-center gap-3">
-                    <button class="btn btn-ghost md:hidden p-1" id="mobileMenuBtn"><i class="fas fa-bars"></i></button>
+                    <button class="btn btn-ghost p-1" id="mobileMenuBtn" title="Toggle sidebar"><i class="fas fa-bars"></i></button>
                     <h3 class="font-semibold text-sm md:text-base truncate max-w-[200px]" id="chatTitle">New Conversation</h3>
                     <span class="text-xs px-2 py-0.5 rounded bg-element-active border border-subtle text-secondary" id="modelBadge">AI Model</span>
                 </div>
@@ -1127,6 +1127,11 @@
 
         sendBtn.addEventListener('click', sendMessage);
         newChatBtn.addEventListener('click', newChat);
+
+        // Hamburger menu - toggle sidebar
+        document.getElementById('mobileMenuBtn').addEventListener('click', function() {
+            document.getElementById('sidebar').classList.toggle('open');
+        });
 
         docsBtn.addEventListener('click', () => {
             documentsPanel.classList.add('open');
