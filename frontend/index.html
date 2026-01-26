@@ -1,1337 +1,46 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Chat Assistant</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <style>
-        :root {
-            --accent: #22d3ee;
-            --accent-hover: #06b6d4;
-            --accent-glow: rgba(34, 211, 238, 0.4);
-            --accent-dim: rgba(34, 211, 238, 0.15);
-            --primary: #22d3ee;
-            --primary-hover: #06b6d4;
-            --primary-light: rgba(34, 211, 238, 0.1);
-            --bg-primary: #030712;
-            --bg-secondary: #0a0f1a;
-            --bg-tertiary: #111827;
-            --bg-elevated: #1f2937;
-            --text-primary: #f9fafb;
-            --text-secondary: #9ca3af;
-            --text-muted: #6b7280;
-            --border-color: #1f2937;
-            --border-light: rgba(255, 255, 255, 0.06);
-            --success: #34d399;
-            --error: #f87171;
-            --warning: #fbbf24;
-            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-            --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.6);
-            --shadow-glow: 0 0 20px var(--accent-glow);
-            --radius-sm: 8px;
-            --radius-md: 12px;
-            --radius-lg: 16px;
-            --radius-xl: 20px;
-            --radius-full: 9999px;
-            --transition: all 0.2s ease;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            height: 100vh;
-            overflow: hidden;
-            line-height: 1.6;
-        }
-
-        /* Subtle background pattern */
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background: 
-                radial-gradient(circle at 0% 0%, var(--accent-dim) 0%, transparent 50%),
-                radial-gradient(circle at 100% 100%, rgba(168, 85, 247, 0.05) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        /* Main Layout */
-        .app-container {
-            display: flex;
-            height: 100vh;
-            position: relative;
-            z-index: 1;
-        }
-
-        /* Sidebar */
-        .sidebar {
-            width: 280px;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            transition: var(--transition);
-            position: relative;
-        }
-
-        .sidebar::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            bottom: 0;
-            width: 1px;
-            background: linear-gradient(to bottom, var(--accent-dim), transparent, var(--accent-dim));
-            pointer-events: none;
-        }
-
-        .sidebar-header {
-            padding: 1.25rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .sidebar-header .brand {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-
-        .sidebar-header .logo {
-            width: 44px;
-            height: 44px;
-            background: linear-gradient(135deg, var(--accent), #a855f7);
-            border-radius: var(--radius-md);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.25rem;
-            box-shadow: 0 0 20px var(--accent-glow);
-            color: var(--bg-primary);
-        }
-
-        .sidebar-header h2 {
-            font-size: 1.125rem;
-            font-weight: 600;
-            background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .new-chat-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            width: 100%;
-            margin-top: 1rem;
-            padding: 0.75rem;
-            background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-            color: var(--bg-primary);
-            border: none;
-            border-radius: var(--radius-md);
-            font-family: inherit;
-            font-size: 0.875rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-            box-shadow: 0 2px 10px var(--accent-glow);
-        }
-
-        .new-chat-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 20px var(--accent-glow);
-        }
-
-        /* Conversations List */
-        .conversations-section {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1rem;
-        }
-
-        .section-title {
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-muted);
-            margin-bottom: 0.75rem;
-            padding: 0 0.5rem;
-        }
-
-        .conversation-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-        }
-
-        .conversation-item {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem;
-            border-radius: var(--radius-md);
-            cursor: pointer;
-            transition: var(--transition);
-            color: var(--text-secondary);
-            border: 1px solid transparent;
-        }
-
-        .conversation-item:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            border-color: var(--border-color);
-        }
-
-        .conversation-item.active {
-            background: var(--accent-dim);
-            color: var(--accent);
-            border-color: rgba(34, 211, 238, 0.2);
-        }
-
-        .conversation-item i {
-            font-size: 1rem;
-            opacity: 0.7;
-        }
-
-        .conversation-item span {
-            flex: 1;
-            font-size: 0.875rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .conversation-item .delete-btn {
-            opacity: 0;
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            padding: 0.25rem;
-            border-radius: var(--radius-sm);
-            transition: var(--transition);
-        }
-
-        .conversation-item:hover .delete-btn {
-            opacity: 1;
-        }
-
-        .conversation-item .delete-btn:hover {
-            color: var(--error);
-            background: rgba(239, 68, 68, 0.1);
-        }
-
-        /* Sidebar Footer */
-        .sidebar-footer {
-            padding: 1rem;
-            border-top: 1px solid var(--border-color);
-        }
-
-        .user-menu {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem;
-            border-radius: var(--radius-md);
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .user-menu:hover {
-            background: var(--bg-tertiary);
-        }
-
-        .user-avatar {
-            width: 36px;
-            height: 36px;
-            background: linear-gradient(135deg, var(--accent), #a855f7);
-            border-radius: var(--radius-full);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.875rem;
-            font-weight: 600;
-            color: var(--bg-primary);
-            box-shadow: 0 0 12px var(--accent-glow);
-        }
-
-        .user-info {
-            flex: 1;
-        }
-
-        .user-info .name {
-            font-size: 0.875rem;
-            font-weight: 500;
-        }
-
-        .user-info .status {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        .logout-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            padding: 0.5rem;
-            border-radius: var(--radius-sm);
-            transition: var(--transition);
-        }
-
-        .logout-btn:hover {
-            color: var(--error);
-            background: rgba(239, 68, 68, 0.1);
-        }
-
-        .user-profile-link {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            flex: 1;
-            text-decoration: none;
-            color: inherit;
-            border-radius: var(--radius-sm);
-            padding: 0.25rem;
-            transition: var(--transition);
-        }
-
-        .user-profile-link:hover {
-            background: var(--bg-tertiary);
-        }
-
-        .profile-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            padding: 0.5rem;
-            border-radius: var(--radius-sm);
-            transition: var(--transition);
-        }
-
-        .profile-btn:hover {
-            color: var(--accent);
-            background: var(--accent-dim);
-        }
-
-        /* Main Content */
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            background: var(--bg-primary);
-        }
-
-        /* Chat Header */
-        .chat-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1rem 1.5rem;
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-color);
-            backdrop-filter: blur(10px);
-        }
-
-        .chat-header h3 {
-            font-size: 1rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .model-badge {
-            font-size: 0.75rem;
-            font-weight: 500;
-            padding: 0.25rem 0.75rem;
-            background: var(--accent-dim);
-            color: var(--accent);
-            border-radius: var(--radius-full);
-            border: 1px solid rgba(34, 211, 238, 0.2);
-        }
-
-        .header-center {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .chat-client-selector {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .chat-client-selector label {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .chat-client-select {
-            padding: 0.375rem 0.75rem;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            color: var(--text-primary);
-            font-size: 0.8125rem;
-            cursor: pointer;
-            transition: var(--transition);
-            min-width: 140px;
-        }
-
-        .chat-client-select:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-
-        .chat-client-select:hover {
-            border-color: var(--accent);
-        }
-
-        .connection-status {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.8125rem;
-            color: var(--text-secondary);
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: var(--radius-full);
-            background: var(--text-muted);
-        }
-
-        .status-dot.connected {
-            background: var(--success);
-            box-shadow: 0 0 10px rgba(52, 211, 153, 0.6);
-            animation: pulse-dot 2s ease-in-out infinite;
-        }
-
-        @keyframes pulse-dot {
-            0%, 100% { box-shadow: 0 0 10px rgba(52, 211, 153, 0.6); }
-            50% { box-shadow: 0 0 15px rgba(52, 211, 153, 0.8); }
-        }
-
-        .status-dot.disconnected {
-            background: var(--error);
-        }
-
-        /* Chat Messages */
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-        }
-
-        .message {
-            display: flex;
-            gap: 1rem;
-            max-width: 85%;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .message.user {
-            margin-left: auto;
-            flex-direction: row-reverse;
-        }
-
-        .message-avatar {
-            width: 38px;
-            height: 38px;
-            border-radius: var(--radius-md);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.875rem;
-            flex-shrink: 0;
-        }
-
-        .message.assistant .message-avatar {
-            background: linear-gradient(135deg, var(--accent), #a855f7);
-            color: var(--bg-primary);
-            box-shadow: 0 0 15px var(--accent-glow);
-        }
-
-        .message.user .message-avatar {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-color);
-        }
-
-        .message-content {
-            padding: 1rem 1.25rem;
-            border-radius: var(--radius-lg);
-            font-size: 0.9375rem;
-            line-height: 1.7;
-        }
-
-        .message.assistant .message-content {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-bottom-left-radius: var(--radius-sm);
-            box-shadow: var(--shadow-md);
-        }
-
-        .message.user .message-content {
-            background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-            color: var(--bg-primary);
-            border-bottom-right-radius: var(--radius-sm);
-            box-shadow: 0 2px 15px var(--accent-glow);
-        }
-
-        .message.streaming .message-content {
-            position: relative;
-        }
-
-        .message.streaming .message-content::after {
-            content: '▊';
-            animation: blink 0.8s infinite;
-            margin-left: 2px;
-            color: var(--accent);
-        }
-
-        @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0; }
-        }
-
-        .message-content p {
-            margin-bottom: 0.75rem;
-        }
-
-        .message-content p:last-child {
-            margin-bottom: 0;
-        }
-
-        .message-content pre {
-            background: var(--bg-primary);
-            padding: 1rem;
-            border-radius: var(--radius-md);
-            overflow-x: auto;
-            margin: 0.75rem 0;
-            font-size: 0.8125rem;
-            font-family: 'JetBrains Mono', monospace;
-            border: 1px solid var(--border-color);
-        }
-
-        .message-content code {
-            background: var(--bg-tertiary);
-            padding: 0.125rem 0.5rem;
-            border-radius: var(--radius-sm);
-            font-size: 0.85em;
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--accent);
-        }
-
-        .message-content pre code {
-            background: none;
-            padding: 0;
-            color: var(--text-primary);
-        }
-
-        .message-content ul, .message-content ol {
-            margin: 0.75rem 0;
-            padding-left: 1.5rem;
-        }
-
-        .message-content li {
-            margin-bottom: 0.25rem;
-        }
-
-        /* Typing Indicator */
-        .typing-indicator {
-            display: none;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 1rem 1.25rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-lg);
-            border-bottom-left-radius: var(--radius-sm);
-            max-width: fit-content;
-        }
-
-        .typing-indicator.show {
-            display: flex;
-        }
-
-        .typing-dots {
-            display: flex;
-            gap: 4px;
-        }
-
-        .typing-dots span {
-            width: 8px;
-            height: 8px;
-            background: var(--accent);
-            border-radius: var(--radius-full);
-            animation: bounce 1.4s infinite ease-in-out;
-        }
-
-        .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
-
-        @keyframes bounce {
-            0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
-            40% { transform: scale(1); opacity: 1; }
-        }
-
-        /* Welcome State */
-        .welcome-state {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 2rem;
-        }
-
-        .welcome-state .icon {
-            width: 88px;
-            height: 88px;
-            background: linear-gradient(135deg, var(--accent), #a855f7);
-            border-radius: var(--radius-xl);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2.25rem;
-            margin-bottom: 1.5rem;
-            color: var(--bg-primary);
-            box-shadow: 
-                0 0 40px var(--accent-glow),
-                0 10px 40px rgba(0, 0, 0, 0.3);
-            animation: float 3s ease-in-out infinite;
-        }
-
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-8px); }
-        }
-
-        .welcome-state h2 {
-            font-size: 1.75rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(135deg, var(--text-primary), var(--accent));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .welcome-state p {
-            color: var(--text-secondary);
-            max-width: 400px;
-            font-size: 1rem;
-        }
-
-        .suggestion-cards {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 0.75rem;
-            margin-top: 2rem;
-            width: 100%;
-            max-width: 600px;
-        }
-
-        .suggestion-card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            padding: 1rem 1.25rem;
-            text-align: left;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .suggestion-card:hover {
-            background: var(--bg-tertiary);
-            border-color: var(--accent);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-        }
-
-        .suggestion-card .title {
-            font-size: 0.875rem;
-            font-weight: 500;
-            margin-bottom: 0.25rem;
-            color: var(--text-primary);
-        }
-
-        .suggestion-card .desc {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        /* Chat Input */
-        .chat-input-container {
-            padding: 1rem 1.5rem 1.5rem;
-            background: transparent;
-        }
-
-        .chat-input-wrapper {
-            display: flex;
-            align-items: flex-end;
-            gap: 0.75rem;
-            background: var(--bg-secondary);
-            border: 1.5px solid var(--border-color);
-            border-radius: var(--radius-lg);
-            padding: 0.75rem 1rem;
-            transition: var(--transition);
-            box-shadow: var(--shadow-md);
-        }
-
-        .chat-input-wrapper:focus-within {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 4px var(--accent-dim), var(--shadow-md);
-        }
-
-        .chat-input {
-            flex: 1;
-            background: none;
-            border: none;
-            color: var(--text-primary);
-            font-size: 0.9375rem;
-            line-height: 1.5;
-            resize: none;
-            max-height: 150px;
-            outline: none;
-            font-family: inherit;
-        }
-
-        .chat-input::placeholder {
-            color: var(--text-muted);
-        }
-
-        .input-actions {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .action-btn {
-            width: 36px;
-            height: 36px;
-            border: none;
-            border-radius: var(--radius-md);
-            background: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: var(--transition);
-        }
-
-        .action-btn:hover {
-            background: var(--bg-tertiary);
-            color: var(--accent);
-        }
-
-        .send-btn {
-            background: linear-gradient(135deg, var(--accent), var(--accent-hover));
-            color: var(--bg-primary);
-            box-shadow: 0 2px 10px var(--accent-glow);
-        }
-
-        .send-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 15px var(--accent-glow);
-        }
-
-        .send-btn:disabled {
-            background: var(--bg-tertiary);
-            color: var(--text-muted);
-            cursor: not-allowed;
-            box-shadow: none;
-            transform: none;
-        }
-
-        .input-hint {
-            text-align: center;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 0.75rem;
-        }
-
-        /* Documents Panel */
-        .documents-panel {
-            position: fixed;
-            top: 0;
-            right: -400px;
-            width: 400px;
-            height: 100vh;
-            background: var(--bg-secondary);
-            border-left: 1px solid var(--border-color);
-            z-index: 100;
-            transition: right 0.3s ease;
-            display: flex;
-            flex-direction: column;
-            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
-        }
-
-        .documents-panel.open {
-            right: 0;
-        }
-
-        .panel-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1rem 1.25rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .panel-header h3 {
-            font-size: 1rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .panel-header h3 i {
-            color: var(--accent);
-        }
-
-        .close-panel-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            padding: 0.5rem;
-            border-radius: var(--radius-sm);
-            transition: var(--transition);
-        }
-
-        .close-panel-btn:hover {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-        }
-
-        .panel-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1rem;
-        }
-
-        .upload-zone {
-            border: 2px dashed var(--border-color);
-            border-radius: var(--radius-md);
-            padding: 2rem;
-            text-align: center;
-            transition: var(--transition);
-            cursor: pointer;
-            margin-bottom: 1.5rem;
-            background: var(--bg-tertiary);
-        }
-
-        .upload-zone:hover, .upload-zone.drag-over {
-            border-color: var(--accent);
-            background: var(--accent-dim);
-        }
-
-        .upload-zone i {
-            font-size: 2rem;
-            color: var(--accent);
-            margin-bottom: 0.75rem;
-        }
-
-        .upload-zone p {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-        }
-
-        .upload-zone .hint {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 0.25rem;
-        }
-
-        .upload-options {
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid var(--border-color);
-            text-align: left;
-        }
-
-        .upload-options .option-label {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.8125rem;
-            color: var(--text-secondary);
-            cursor: pointer;
-            margin-bottom: 0.5rem;
-        }
-
-        .upload-options .option-label:last-child {
-            margin-bottom: 0;
-        }
-
-        .upload-options input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            accent-color: var(--primary);
-            cursor: pointer;
-        }
-
-        .upload-options .option-label:hover {
-            color: var(--text-primary);
-        }
-
-        .document-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .document-item {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem;
-            background: var(--bg-tertiary);
-            border-radius: var(--radius-md);
-        }
-
-        .document-item i {
-            font-size: 1.25rem;
-            color: var(--primary);
-        }
-
-        .document-info {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .document-info .name {
-            font-size: 0.875rem;
-            font-weight: 500;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .document-info .meta {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        .document-item .delete-doc-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            padding: 0.375rem;
-            border-radius: var(--radius-sm);
-            transition: var(--transition);
-        }
-
-        .document-item .delete-doc-btn:hover {
-            color: var(--error);
-            background: rgba(239, 68, 68, 0.1);
-        }
-
-        /* Toast Notifications */
-        .toast-container {
-            position: fixed;
-            top: 1.5rem;
-            right: 1.5rem;
-            z-index: 1001;
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
-
-        .toast {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 1rem 1.25rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-lg);
-            animation: slideIn 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(100%); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        .toast.success { 
-            border-left: 4px solid var(--success); 
-            box-shadow: var(--shadow-lg), 0 0 20px rgba(52, 211, 153, 0.2);
-        }
-        .toast.error { 
-            border-left: 4px solid var(--error); 
-            box-shadow: var(--shadow-lg), 0 0 20px rgba(248, 113, 113, 0.2);
-        }
-        .toast.warning { 
-            border-left: 4px solid var(--warning); 
-            box-shadow: var(--shadow-lg), 0 0 20px rgba(251, 191, 36, 0.2);
-        }
-
-        .toast-message {
-            font-size: 0.875rem;
-        }
-
-        /* Loading Overlay */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(3, 7, 18, 0.9);
-            backdrop-filter: blur(8px);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 2000;
-        }
-
-        .loading-overlay.hidden {
-            display: none;
-        }
-
-        .loading-spinner {
-            width: 48px;
-            height: 48px;
-            border: 4px solid var(--bg-tertiary);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            box-shadow: 0 0 20px var(--accent-glow);
-        }
-
-        .loading-text {
-            margin-top: 1rem;
-            font-size: 0.9375rem;
-            color: var(--text-secondary);
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Inline loader for buttons and sections */
-        .btn-loading {
-            position: relative;
-            color: transparent !important;
-            pointer-events: none;
-        }
-
-        .btn-loading::after {
-            content: '';
-            position: absolute;
-            width: 16px;
-            height: 16px;
-            top: 50%;
-            left: 50%;
-            margin-left: -8px;
-            margin-top: -8px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        /* Section loader */
-        .section-loading {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem;
-            color: var(--text-muted);
-        }
-
-        .section-loading .spinner {
-            width: 32px;
-            height: 32px;
-            border: 3px solid var(--bg-tertiary);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 0.75rem;
-        }
-
-        /* Upload progress */
-        .upload-progress {
-            width: 100%;
-            margin-top: 1rem;
-        }
-
-        .upload-progress.hidden {
-            display: none;
-        }
-
-        .progress-bar-container {
-            width: 100%;
-            height: 6px;
-            background: var(--bg-tertiary);
-            border-radius: var(--radius-full);
-            overflow: hidden;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary), #8b5cf6);
-            border-radius: var(--radius-full);
-            transition: width 0.3s ease;
-        }
-
-        .progress-text {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 0.5rem;
-            text-align: center;
-        }
-
-        /* Client Selector */
-        .client-selector {
-            padding: 1rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        .client-selector label {
-            display: block;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-        }
-
-        .client-select-wrapper {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .client-select {
-            flex: 1;
-            padding: 0.625rem 0.875rem;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            color: var(--text-primary);
-            font-size: 0.875rem;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .client-select:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
-        .add-client-btn {
-            padding: 0.625rem 0.875rem;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-md);
-            color: var(--text-secondary);
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .add-client-btn:hover {
-            background: var(--primary);
-            color: white;
-            border-color: var(--primary);
-        }
-
-        /* Client Modal */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(4px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1002;
-        }
-
-        .modal-overlay.hidden {
-            display: none;
-        }
-
-        .modal-card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: var(--radius-lg);
-            padding: 1.5rem;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: var(--shadow-lg);
-        }
-
-        .modal-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1.25rem;
-        }
-
-        .modal-header h3 {
-            font-size: 1.125rem;
-            font-weight: 600;
-        }
-
-        .modal-actions {
-            display: flex;
-            gap: 0.75rem;
-            margin-top: 1.5rem;
-        }
-
-        .modal-actions button {
-            flex: 1;
-            padding: 0.75rem;
-            border-radius: var(--radius-md);
-            font-size: 0.875rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: var(--transition);
-        }
-
-        .modal-actions .cancel-btn {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border-color);
-            color: var(--text-secondary);
-        }
-
-        .modal-actions .cancel-btn:hover {
-            background: var(--bg-primary);
-        }
-
-        .modal-actions .submit-btn {
-            background: var(--primary);
-            border: none;
-            color: white;
-        }
-
-        .modal-actions .submit-btn:hover {
-            background: var(--primary-hover);
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .sidebar {
-                position: fixed;
-                left: -280px;
-                top: 0;
-                height: 100vh;
-                z-index: 99;
-            }
-
-            .sidebar.open {
-                left: 0;
-            }
-
-            .documents-panel {
-                width: 100%;
-                right: -100%;
-            }
-
-            .suggestion-cards {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        /* Scrollbar Styling */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--bg-tertiary);
-            border-radius: var(--radius-full);
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--text-muted);
-        }
-    </style>
 </head>
 <body>
-    <!-- Main App -->
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <div class="brand">
-                    <div class="logo">
+                <div class="flex items-center gap-2 font-semibold">
+                    <div class="w-8 h-8 rounded bg-accent-solid text-inverse flex items-center justify-center">
                         <i class="fas fa-robot"></i>
                     </div>
-                    <h2>AI Chat</h2>
+                    <span>AI Chat</span>
                 </div>
-                <button class="new-chat-btn" id="newChatBtn">
-                    <i class="fas fa-plus"></i>
-                    <span>New Chat</span>
+                <button class="btn btn-primary w-full mt-4" id="newChatBtn">
+                    <i class="fas fa-plus"></i> New Chat
                 </button>
             </div>
-            <div class="conversations-section">
-                <div class="section-title">Recent Conversations</div>
-                <div class="conversation-list" id="conversationList">
-                    <!-- Conversations will be loaded here -->
+            
+            <div class="sidebar-content">
+                <div class="text-xs font-medium text-secondary uppercase tracking-wider mb-2 px-2">Recent</div>
+                <div class="flex flex-col gap-1" id="conversationList">
+                    <!-- Conversations injected here -->
                 </div>
             </div>
+            
             <div class="sidebar-footer">
-                <div class="user-menu">
-                    <a href="/profile" class="user-profile-link" title="View Profile & Settings">
-                        <div class="user-avatar" id="userAvatar">A</div>
-                        <div class="user-info">
-                            <div class="name" id="userName">Admin</div>
-                            <div class="status">Online</div>
-                        </div>
-                    </a>
-                    <button class="profile-btn" id="profileBtn" title="Profile & Settings" onclick="window.location.href='/profile'">
+                <div class="flex items-center gap-2 p-2 rounded hover:bg-element-hover cursor-pointer transition-colors" id="userMenu">
+                    <div class="w-8 h-8 rounded-full bg-accent-solid text-inverse flex items-center justify-center text-sm font-bold" id="userAvatar">U</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-medium truncate" id="userName">User</div>
+                        <div class="text-xs text-secondary">Online</div>
+                    </div>
+                    <button class="btn btn-ghost p-1 text-secondary" id="settingsBtn" title="Settings">
                         <i class="fas fa-cog"></i>
-                    </button>
-                    <button class="logout-btn" id="logoutBtn" title="Sign out">
-                        <i class="fas fa-sign-out-alt"></i>
                     </button>
                 </div>
             </div>
@@ -1340,67 +49,77 @@
         <!-- Main Content -->
         <main class="main-content">
             <header class="chat-header">
-                <h3>
-                    <span id="chatTitle">New Conversation</span>
-                    <span class="model-badge" id="modelBadge">AI Model</span>
-                </h3>
-                <div class="header-center">
-                    <div class="chat-client-selector">
-                        <label for="chatClientSelect"><i class="fas fa-building"></i></label>
-                        <select class="chat-client-select" id="chatClientSelect" title="Select client context">
+                <div class="flex items-center gap-3">
+                    <button class="btn btn-ghost md:hidden p-1" id="mobileMenuBtn"><i class="fas fa-bars"></i></button>
+                    <h3 class="font-semibold text-sm md:text-base truncate max-w-[200px]" id="chatTitle">New Conversation</h3>
+                    <span class="text-xs px-2 py-0.5 rounded bg-element-active border border-subtle text-secondary" id="modelBadge">AI Model</span>
+                </div>
+                
+                <div class="flex items-center gap-2 md:gap-4">
+                    <div class="flex items-center gap-2">
+                        <label for="chatClientSelect" class="text-xs text-secondary hidden md:block uppercase tracking-wider">Context</label>
+                        <select class="text-sm py-1 pl-2 pr-8 border border-subtle rounded bg-element" id="chatClientSelect">
+                            <!-- Options injected -->
                         </select>
                     </div>
-                </div>
-                <div class="connection-status">
-                    <span class="status-dot" id="statusDot"></span>
-                    <span id="statusText">Connecting...</span>
-                    <button class="action-btn" id="docsBtn" title="Knowledge Base">
+                    
+                    <div class="h-4 w-px bg-border-subtle mx-1"></div>
+                    
+                    <div class="flex items-center gap-2 text-xs text-secondary">
+                        <span class="w-2 h-2 rounded-full bg-border-focus" id="statusDot"></span>
+                        <span id="statusText" class="hidden md:inline">Connecting...</span>
+                    </div>
+                    
+                    <button class="btn btn-secondary p-2" id="docsBtn" title="Knowledge Base">
                         <i class="fas fa-folder-open"></i>
                     </button>
                 </div>
             </header>
 
-            <!-- Chat Messages -->
+            <!-- Chat Area -->
             <div class="chat-messages" id="chatMessages">
                 <!-- Welcome State -->
-                <div class="welcome-state" id="welcomeState">
-                    <div class="icon">
+                <div class="flex flex-col items-center justify-center h-full text-center p-8" id="welcomeState">
+                    <div class="w-16 h-16 rounded-2xl bg-element border border-subtle flex items-center justify-center text-3xl text-primary mb-6 shadow-sm">
                         <i class="fas fa-comments"></i>
                     </div>
-                    <h2>How can I help you today?</h2>
-                    <p>I'm your AI assistant with access to your knowledge base. Ask me anything!</p>
-                    <div class="suggestion-cards">
-                        <div class="suggestion-card" onclick="useSuggestion('Explain a complex topic')">
-                            <div class="title"><i class="fas fa-lightbulb"></i> Explain a concept</div>
-                            <div class="desc">Break down complex topics into simple terms</div>
-                        </div>
-                        <div class="suggestion-card" onclick="useSuggestion('Help me analyze some data')">
-                            <div class="title"><i class="fas fa-chart-bar"></i> Analyze data</div>
-                            <div class="desc">Get insights from your documents</div>
-                        </div>
-                        <div class="suggestion-card" onclick="useSuggestion('Write a summary of')">
-                            <div class="title"><i class="fas fa-file-alt"></i> Summarize</div>
-                            <div class="desc">Get concise summaries of long content</div>
-                        </div>
-                        <div class="suggestion-card" onclick="useSuggestion('Help me troubleshoot')">
-                            <div class="title"><i class="fas fa-wrench"></i> Troubleshoot</div>
-                            <div class="desc">Debug issues and find solutions</div>
-                        </div>
+                    <h2 class="text-2xl font-bold mb-2">How can I help you?</h2>
+                    <p class="text-secondary max-w-md mb-8">I'm your AI assistant with access to your knowledge base. Ask me anything about your documents or general topics.</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+                        <button class="p-4 rounded-lg border border-subtle bg-element hover:bg-element-hover hover:border-border-focus transition-all text-left group" onclick="useSuggestion('Explain a complex topic')">
+                            <div class="font-medium mb-1 group-hover:text-primary">Explain a concept</div>
+                            <div class="text-sm text-secondary">Break down complex topics</div>
+                        </button>
+                        <button class="p-4 rounded-lg border border-subtle bg-element hover:bg-element-hover hover:border-border-focus transition-all text-left group" onclick="useSuggestion('Help me analyze some data')">
+                            <div class="font-medium mb-1 group-hover:text-primary">Analyze data</div>
+                            <div class="text-sm text-secondary">Get insights from documents</div>
+                        </button>
+                        <button class="p-4 rounded-lg border border-subtle bg-element hover:bg-element-hover hover:border-border-focus transition-all text-left group" onclick="useSuggestion('Write a summary of')">
+                            <div class="font-medium mb-1 group-hover:text-primary">Summarize</div>
+                            <div class="text-sm text-secondary">Concise summaries of content</div>
+                        </button>
+                        <button class="p-4 rounded-lg border border-subtle bg-element hover:bg-element-hover hover:border-border-focus transition-all text-left group" onclick="useSuggestion('Help me troubleshoot')">
+                            <div class="font-medium mb-1 group-hover:text-primary">Troubleshoot</div>
+                            <div class="text-sm text-secondary">Debug issues and find solutions</div>
+                        </button>
                     </div>
                 </div>
 
                 <!-- Typing Indicator -->
-                <div class="typing-indicator" id="typingIndicator">
-                    <div class="typing-dots">
-                        <span></span>
-                        <span></span>
-                        <span></span>
+                <div class="typing-indicator hidden" id="typingIndicator">
+                    <div class="flex items-center gap-2 p-3 rounded-lg bg-element border border-subtle w-fit">
+                        <div class="flex gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce"></span>
+                            <span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 0.1s"></span>
+                            <span class="w-1.5 h-1.5 rounded-full bg-text-tertiary animate-bounce" style="animation-delay: 0.2s"></span>
+                        </div>
+                        <span class="text-xs text-secondary">Thinking...</span>
                     </div>
-                    <span style="color: var(--text-muted); font-size: 0.8125rem;">AI is thinking...</span>
                 </div>
             </div>
 
-            <!-- Chat Input -->
+            <!-- Input Area -->
             <div class="chat-input-container">
                 <div class="chat-input-wrapper">
                     <textarea 
@@ -1409,102 +128,152 @@
                         placeholder="Type your message here..."
                         rows="1"
                     ></textarea>
-                    <div class="input-actions">
-                        <button class="action-btn send-btn" id="sendBtn" disabled>
-                            <i class="fas fa-paper-plane"></i>
+                    <div class="flex items-center gap-2">
+                        <button class="btn btn-primary p-2 rounded-md h-8 w-8 flex items-center justify-center" id="sendBtn" disabled>
+                            <i class="fas fa-arrow-up text-xs"></i>
                         </button>
                     </div>
                 </div>
-                <div class="input-hint">Press Enter to send, Shift+Enter for new line</div>
+                <div class="text-center mt-2 text-xs text-tertiary">
+                    Press Enter to send, Shift+Enter for new line
+                </div>
             </div>
         </main>
     </div>
 
     <!-- Documents Panel -->
     <div class="documents-panel" id="documentsPanel">
-        <div class="panel-header">
-            <h3><i class="fas fa-folder-open"></i> Knowledge Base</h3>
-            <button class="close-panel-btn" id="closePanelBtn">
-                <i class="fas fa-times"></i>
-            </button>
+        <div class="flex items-center justify-between p-4 border-b border-subtle">
+            <h3 class="font-semibold flex items-center gap-2">
+                <i class="fas fa-folder-open text-secondary"></i> Knowledge Base
+            </h3>
+            <button class="btn btn-ghost p-1" id="closePanelBtn"><i class="fas fa-times"></i></button>
         </div>
-        <div class="client-selector">
-            <label>Context / Client</label>
-            <div class="client-select-wrapper">
-                <select class="client-select" id="clientSelect">
+        
+        <div class="p-4 border-b border-subtle bg-bg-app">
+            <label class="text-xs font-medium text-secondary uppercase tracking-wider mb-2 block">Context / Client</label>
+            <div class="flex gap-2">
+                <select class="flex-1 text-sm p-2 border border-subtle rounded bg-element" id="clientSelect">
+                    <!-- Options injected -->
                 </select>
-                <button class="add-client-btn" id="addClientBtn" title="Add new client">
+                <button class="btn btn-secondary p-2" id="addClientBtn" title="Add Client">
                     <i class="fas fa-plus"></i>
                 </button>
             </div>
         </div>
-        <div class="panel-content">
-            <div class="upload-zone" id="uploadZone">
-                <i class="fas fa-cloud-upload-alt" id="uploadIcon"></i>
-                <p id="uploadText">Drag & drop files here</p>
-                <div class="hint" id="uploadHint">or click to browse</div>
+
+        <div class="flex-1 overflow-y-auto p-4">
+            <div class="border-2 border-dashed border-border-subtle rounded-lg p-6 text-center hover:border-accent-solid hover:bg-element-hover transition-all cursor-pointer mb-6" id="uploadZone">
+                <i class="fas fa-cloud-upload-alt text-2xl text-secondary mb-2"></i>
+                <p class="text-sm font-medium" id="uploadText">Drag & drop files</p>
+                <p class="text-xs text-secondary mt-1" id="uploadHint">or click to browse</p>
                 <input type="file" id="fileInput" hidden multiple accept=".pdf,.txt,.md,.doc,.docx,.png,.jpg,.jpeg">
                 
-                <!-- PDF Processing Options -->
-                <div class="upload-options" id="uploadOptions">
-                    <label class="option-label">
-                        <input type="checkbox" id="useOcrCheckbox" checked>
-                        <span>Enable OCR (for scanned/image-based PDFs)</span>
+                <div class="mt-4 pt-4 border-t border-subtle text-left">
+                    <label class="flex items-center gap-2 text-xs text-secondary mb-2 cursor-pointer">
+                        <input type="checkbox" id="useOcrCheckbox" checked class="accent-accent-solid"> Enable OCR
                     </label>
-                    <label class="option-label">
-                        <input type="checkbox" id="fastModeCheckbox">
-                        <span>Fast mode (skip table detection)</span>
+                    <label class="flex items-center gap-2 text-xs text-secondary cursor-pointer">
+                        <input type="checkbox" id="fastModeCheckbox" class="accent-accent-solid"> Fast mode
                     </label>
                 </div>
-                
-                <div class="upload-progress hidden" id="uploadProgress">
-                    <div class="progress-bar-container">
-                        <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+
+                <div class="hidden mt-4" id="uploadProgress">
+                    <div class="h-1.5 w-full bg-border-subtle rounded-full overflow-hidden">
+                        <div class="h-full bg-accent-solid transition-all duration-300" id="progressBar" style="width: 0%"></div>
                     </div>
-                    <div class="progress-text" id="progressText">Uploading...</div>
+                    <div class="text-xs text-secondary mt-2" id="progressText">Uploading...</div>
                 </div>
             </div>
-            <div class="section-title">Uploaded Documents</div>
-            <div class="document-list" id="documentList">
-                <!-- Documents will be loaded here -->
+
+            <div class="text-xs font-medium text-secondary uppercase tracking-wider mb-3">Uploaded Documents</div>
+            <div class="flex flex-col gap-2" id="documentList">
+                <!-- Documents injected -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-lg font-semibold">Settings</h3>
+                <button id="closeSettingsBtn" class="btn btn-ghost p-1"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <div class="flex flex-col gap-6">
+                <div class="flex items-center justify-between p-3 rounded-lg border border-subtle bg-element">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded bg-bg-app border border-subtle flex items-center justify-center">
+                            <i class="fas fa-moon"></i>
+                        </div>
+                        <div>
+                            <div class="font-medium text-sm">Dark Mode</div>
+                            <div class="text-xs text-secondary">Switch between light and dark themes</div>
+                        </div>
+                    </div>
+                    <button id="themeToggleBtn" class="btn btn-secondary text-xs">
+                        Toggle
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-between p-3 rounded-lg border border-subtle bg-element">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded bg-bg-app border border-subtle flex items-center justify-center">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div>
+                            <div class="font-medium text-sm">Profile</div>
+                            <div class="text-xs text-secondary">Manage account settings</div>
+                        </div>
+                    </div>
+                    <button onclick="window.location.href='/profile'" class="btn btn-secondary text-xs">
+                        Manage
+                    </button>
+                </div>
+                
+                <button id="logoutBtnModal" class="btn btn-ghost text-error-text w-full justify-center border border-error-bg hover:bg-error-bg">
+                    Sign Out
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Client Modal -->
+    <div id="clientModal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold">New Client</h3>
+                <button id="closeClientModal" class="btn btn-ghost p-1"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-1 text-secondary">Client Name</label>
+                <input type="text" id="clientName" placeholder="Enter client name" required>
+            </div>
+            <div class="flex gap-2 justify-end">
+                <button class="btn btn-ghost" id="cancelClientBtn">Cancel</button>
+                <button class="btn btn-primary" id="createClientBtn">Create</button>
             </div>
         </div>
     </div>
 
     <!-- Toast Container -->
-    <div class="toast-container" id="toastContainer"></div>
+    <div class="fixed top-4 right-4 z-50 flex flex-col gap-2" id="toastContainer"></div>
 
     <!-- Loading Overlay -->
-    <div class="loading-overlay hidden" id="loadingOverlay">
-        <div class="loading-spinner"></div>
-        <div class="loading-text" id="loadingText">Loading...</div>
-    </div>
-
-    <!-- Add Client Modal -->
-    <div class="modal-overlay hidden" id="clientModal">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3><i class="fas fa-folder-plus"></i> New Client</h3>
-                <button class="close-panel-btn" id="closeClientModal">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="form-group">
-                <label for="clientName">Client Name</label>
-                <input type="text" id="clientName" placeholder="Enter client name" required>
-            </div>
-            <div class="modal-actions">
-                <button class="cancel-btn" id="cancelClientBtn">Cancel</button>
-                <button class="submit-btn" id="createClientBtn">Create</button>
-            </div>
-        </div>
+    <div class="fixed inset-0 bg-bg-app/80 backdrop-blur-sm z-50 hidden flex-col items-center justify-center" id="loadingOverlay">
+        <div class="loading-spinner w-12 h-12 border-4"></div>
+        <div class="mt-4 text-secondary font-medium" id="loadingText">Loading...</div>
     </div>
 
     <script>
+        // Initialize Theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
         // ============================================================
         // Configuration
         // ============================================================
-        // Use same origin for API calls (nginx proxies to backend)
         const API_BASE = window.location.origin;
         const WS_BASE = 'ws://localhost:8000';
         
@@ -1523,7 +292,6 @@
         // ============================================================
         // DOM Elements
         // ============================================================
-        const logoutBtn = document.getElementById('logoutBtn');
         const chatMessages = document.getElementById('chatMessages');
         const chatInput = document.getElementById('chatInput');
         const sendBtn = document.getElementById('sendBtn');
@@ -1541,6 +309,13 @@
         const documentList = document.getElementById('documentList');
         const userName = document.getElementById('userName');
         const userAvatar = document.getElementById('userAvatar');
+        
+        // Settings Modal Elements
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsModal = document.getElementById('settingsModal');
+        const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+        const themeToggleBtn = document.getElementById('themeToggleBtn');
+        const logoutBtnModal = document.getElementById('logoutBtnModal');
 
         // ============================================================
         // Utility Functions
@@ -1555,10 +330,15 @@
         function showToast(message, type = 'success') {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.innerHTML = `<span class="toast-message">${message}</span>`;
+            // Tailwind classes for toast
+            const bgClass = type === 'error' ? 'bg-error-bg text-error-text border-error-text/20' : 'bg-element text-primary border-border-subtle';
+            toast.className = `p-4 rounded-lg border shadow-lg text-sm animate-in slide-in-from-right-full fade-in duration-300 ${bgClass}`;
+            toast.innerHTML = message;
             container.appendChild(toast);
-            setTimeout(() => toast.remove(), 4000);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-x-full');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
         }
 
         function showLoading(message = 'Loading...') {
@@ -1566,10 +346,13 @@
             const text = document.getElementById('loadingText');
             text.textContent = message;
             overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
         }
 
         function hideLoading() {
-            document.getElementById('loadingOverlay').classList.add('hidden');
+            const overlay = document.getElementById('loadingOverlay');
+            overlay.classList.add('hidden');
+            overlay.classList.remove('flex');
         }
 
         function showUploadProgress(current, total, filename) {
@@ -1581,7 +364,7 @@
             const hint = document.getElementById('uploadHint');
             
             progress.classList.remove('hidden');
-            icon.className = 'fas fa-spinner fa-spin';
+            icon.className = 'fas fa-spinner fa-spin text-2xl text-accent-solid mb-2';
             uploadText.textContent = 'Uploading...';
             hint.style.display = 'none';
             
@@ -1597,26 +380,18 @@
             const hint = document.getElementById('uploadHint');
             
             progress.classList.add('hidden');
-            icon.className = 'fas fa-cloud-upload-alt';
-            uploadText.textContent = 'Drag & drop files here';
+            icon.className = 'fas fa-cloud-upload-alt text-2xl text-secondary mb-2';
+            uploadText.textContent = 'Drag & drop files';
             hint.style.display = 'block';
         }
 
-        function showSectionLoading(element) {
-            element.innerHTML = `
-                <div class="section-loading">
-                    <div class="spinner"></div>
-                    <span>Loading...</span>
-                </div>
-            `;
-        }
-
-        function formatTime(date) {
-            return new Intl.DateTimeFormat('en-US', {
-                hour: 'numeric',
-                minute: 'numeric',
-                hour12: true
-            }).format(new Date(date));
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            if (!bytes) return '';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
         // ============================================================
@@ -1669,25 +444,21 @@
         function connectWebSocket() {
             if (!authToken || !currentConversationId) return;
 
-            // WebSocket path expects client_id; fall back to 'global' if none selected
             const wsClientId = currentClientId || 'global';
             const wsUrl = `${WS_BASE}/chat/ws/${wsClientId}?token=${authToken}`;
             websocket = new WebSocket(wsUrl);
 
             websocket.onopen = () => {
                 reconnectAttempts = 0;
-                // WebSocket connected - don't need to update status as API already confirmed working
             };
 
             websocket.onclose = () => {
-                // Reset state if we were waiting for a response
                 if (isWaitingForResponse) {
                     isWaitingForResponse = false;
                     currentStreamingMessage = null;
                     sendBtn.disabled = false;
                     hideTypingIndicator();
                 }
-                // Try reconnect
                 if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
                     reconnectAttempts++;
                     setTimeout(connectWebSocket, 2000 * reconnectAttempts);
@@ -1695,9 +466,7 @@
             };
 
             websocket.onerror = () => {
-                // WebSocket error - API might still work, don't change status
                 console.warn('WebSocket error - will retry');
-                // Reset state if we were waiting
                 if (isWaitingForResponse) {
                     isWaitingForResponse = false;
                     currentStreamingMessage = null;
@@ -1715,37 +484,32 @@
 
         function updateConnectionStatus(connected) {
             if (connected) {
-                statusDot.classList.add('connected');
-                statusDot.classList.remove('disconnected');
+                statusDot.classList.remove('bg-error-bg', 'bg-border-focus');
+                statusDot.classList.add('bg-success-text');
                 statusText.textContent = 'Ready';
             } else {
-                statusDot.classList.remove('connected');
-                statusDot.classList.add('disconnected');
+                statusDot.classList.remove('bg-success-text', 'bg-border-focus');
+                statusDot.classList.add('bg-error-text');
                 statusText.textContent = 'Offline';
             }
         }
 
-        // Track the current streaming message element
         let currentStreamingMessage = null;
         let isWaitingForResponse = false;
 
         function handleWebSocketMessage(data) {
-            // Handle backend message types: 'chunk', 'done', 'error', 'pong'
             if (data.type === 'chunk' || data.type === 'stream') {
-                // Create a new assistant message if this is the first chunk
                 if (!currentStreamingMessage) {
                     hideTypingIndicator();
                     currentStreamingMessage = createAssistantMessage('');
                 }
                 appendToStreamingMessage(data.content);
             } else if (data.type === 'done' || data.type === 'complete') {
-                // Finalize the streaming message
                 if (currentStreamingMessage) {
                     const contentDiv = currentStreamingMessage.querySelector('.message-content');
-                    // Re-parse with markdown for final formatting
                     contentDiv.innerHTML = marked.parse(contentDiv.textContent);
-                    // Remove streaming class to stop the cursor animation
-                    currentStreamingMessage.classList.remove('streaming');
+                    // Add copy buttons to code blocks
+                    addCopyButtons(contentDiv);
                 }
                 currentStreamingMessage = null;
                 isWaitingForResponse = false;
@@ -1758,8 +522,6 @@
                 hideTypingIndicator();
                 sendBtn.disabled = false;
                 showToast(data.detail || data.message || 'An error occurred', 'error');
-            } else if (data.type === 'pong') {
-                // Heartbeat response, ignore
             }
         }
 
@@ -1770,38 +532,30 @@
             const message = chatInput.value.trim();
             if (!message) return;
             
-            // Prevent sending while waiting for response
-            if (isWaitingForResponse || sendBtn.disabled) {
-                return;
-            }
+            if (isWaitingForResponse || sendBtn.disabled) return;
 
             chatInput.value = '';
             autoResizeInput();
             sendBtn.disabled = true;
             isWaitingForResponse = true;
-            currentStreamingMessage = null; // Reset streaming message
+            currentStreamingMessage = null;
 
-            // Hide welcome state
             welcomeState.style.display = 'none';
 
-            // Create conversation if needed
             if (!currentConversationId) {
                 try {
                     await createConversation();
                 } catch (error) {
                     sendBtn.disabled = false;
                     isWaitingForResponse = false;
-                    return; // Don't continue if conversation creation failed
+                    return;
                 }
             }
 
-            // Add user message to UI
             addMessage('user', message);
             showTypingIndicator();
 
-            // Send via WebSocket or REST
             if (websocket && websocket.readyState === WebSocket.OPEN) {
-                // Backend expects: { type: 'chat', message: '...', conversation_id: '...' }
                 websocket.send(JSON.stringify({ 
                     type: 'chat', 
                     message: message,
@@ -1814,7 +568,6 @@
 
         async function sendMessageREST(message) {
             try {
-                // Build request body - only include conversation_id if not null
                 const requestBody = {
                     message: message,
                     stream: false
@@ -1822,7 +575,6 @@
                 if (currentConversationId) {
                     requestBody.conversation_id = currentConversationId;
                 }
-                // Include client_id for client-scoped retrieval
                 if (currentClientId) {
                     requestBody.client_id = currentClientId;
                 }
@@ -1873,11 +625,14 @@
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
             contentDiv.innerHTML = role === 'assistant' ? marked.parse(content) : escapeHtml(content);
+            
+            if (role === 'assistant') {
+                addCopyButtons(contentDiv);
+            }
 
             messageDiv.appendChild(avatar);
             messageDiv.appendChild(contentDiv);
             
-            // Insert before typing indicator
             chatMessages.insertBefore(messageDiv, typingIndicator);
             scrollToBottom();
             
@@ -1886,7 +641,7 @@
 
         function createAssistantMessage(initialContent) {
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant streaming';
+            messageDiv.className = 'message assistant';
             
             const avatar = document.createElement('div');
             avatar.className = 'message-avatar';
@@ -1899,7 +654,6 @@
             messageDiv.appendChild(avatar);
             messageDiv.appendChild(contentDiv);
             
-            // Insert before typing indicator
             chatMessages.insertBefore(messageDiv, typingIndicator);
             scrollToBottom();
             
@@ -1921,12 +675,12 @@
         }
 
         function showTypingIndicator() {
-            typingIndicator.classList.add('show');
+            typingIndicator.classList.remove('hidden');
             scrollToBottom();
         }
 
         function hideTypingIndicator() {
-            typingIndicator.classList.remove('show');
+            typingIndicator.classList.add('hidden');
         }
 
         function scrollToBottom() {
@@ -1944,7 +698,6 @@
 
                 if (response.ok) {
                     const data = await response.json();
-                    // API returns {conversations: [...]}
                     const conversations = data.conversations || data || [];
                     renderConversations(conversations);
                 } else if (response.status === 401) {
@@ -1956,15 +709,13 @@
         }
 
         function renderConversations(conversationsList) {
-            // Ensure we have an array
             const conversations = Array.isArray(conversationsList) ? conversationsList : [];
             conversationList.innerHTML = '';
             
             if (conversations.length === 0) {
                 conversationList.innerHTML = `
-                    <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
-                        <i class="fas fa-comments" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
-                        <p style="font-size: 0.8125rem;">No conversations yet</p>
+                    <div class="text-center p-4 text-secondary text-xs">
+                        No conversations yet
                     </div>
                 `;
                 return;
@@ -1972,12 +723,14 @@
 
             conversations.forEach(conv => {
                 const item = document.createElement('div');
-                item.className = `conversation-item ${conv.id === currentConversationId ? 'active' : ''}`;
+                // Updated classes for new design
+                const activeClass = conv.id === currentConversationId ? 'bg-element-active text-primary' : 'hover:bg-element-hover text-secondary';
+                item.className = `flex items-center gap-2 p-2 rounded cursor-pointer transition-colors group ${activeClass}`;
                 item.innerHTML = `
-                    <i class="fas fa-message"></i>
-                    <span>${conv.title || 'New Conversation'}</span>
-                    <button class="delete-btn" data-id="${conv.id}">
-                        <i class="fas fa-trash"></i>
+                    <i class="fas fa-message text-xs opacity-70"></i>
+                    <span class="flex-1 text-sm truncate">${conv.title || 'New Conversation'}</span>
+                    <button class="delete-btn opacity-0 group-hover:opacity-100 p-1 hover:text-error-text transition-opacity" data-id="${conv.id}">
+                        <i class="fas fa-trash text-xs"></i>
                     </button>
                 `;
                 item.onclick = (e) => {
@@ -2014,7 +767,7 @@
                 }
             } catch (error) {
                 showToast('Failed to create conversation', 'error');
-                throw error; // Re-throw so sendMessage knows it failed
+                throw error;
             }
         }
 
@@ -2025,17 +778,23 @@
             sendBtn.disabled = false;
             if (websocket) websocket.close();
             
-            // Clear messages and show loading
             chatMessages.querySelectorAll('.message').forEach(m => m.remove());
             welcomeState.style.display = 'none';
             showTypingIndicator();
             document.getElementById('chatTitle').textContent = 'Loading...';
             
-            // Load conversation history
+            // Highlight active conversation
+            const items = conversationList.querySelectorAll('div');
+            items.forEach(item => {
+                // Reset classes
+                item.className = 'flex items-center gap-2 p-2 rounded cursor-pointer transition-colors group hover:bg-element-hover text-secondary';
+            });
+            // This is a bit hacky, ideally re-render, but for speed:
+            loadConversations(); // Re-render to update active state correctly
+
             await loadConversationHistory(id);
             hideTypingIndicator();
             connectWebSocket();
-            loadConversations();
         }
 
         async function loadConversationHistory(id) {
@@ -2095,7 +854,7 @@
             sendBtn.disabled = false;
             if (websocket) websocket.close();
             chatMessages.querySelectorAll('.message').forEach(m => m.remove());
-            welcomeState.style.display = 'flex';
+            welcomeState.style.display = 'flex'; // Use flex to restore layout
             document.getElementById('chatTitle').textContent = 'New Conversation';
             hideTypingIndicator();
             loadConversations();
@@ -2122,11 +881,9 @@
                 } else if (response.status === 401) {
                     logout();
                 } else {
-                    console.error('Failed to load documents:', response.status);
                     renderDocuments([]);
                 }
             } catch (error) {
-                console.error('Failed to load documents:', error);
                 renderDocuments([]);
             }
         }
@@ -2134,9 +891,8 @@
         function renderDocuments(documents) {
             if (!documents || documents.length === 0) {
                 documentList.innerHTML = `
-                    <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
-                        <i class="fas fa-file-alt" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
-                        <p style="font-size: 0.8125rem;">No documents uploaded</p>
+                    <div class="text-center p-4 text-secondary text-xs">
+                        No documents uploaded
                     </div>
                 `;
                 return;
@@ -2145,16 +901,16 @@
             documentList.innerHTML = '';
             documents.forEach(doc => {
                 const item = document.createElement('div');
-                item.className = 'document-item';
+                item.className = 'document-item flex items-center gap-3 p-3 rounded bg-element border border-subtle';
                 const meta = doc.chunk_count ? `${doc.chunk_count} chunks` : formatFileSize(doc.size || 0);
                 const clientInfo = doc.client_name ? ` • ${doc.client_name}` : '';
                 item.innerHTML = `
-                    <i class="fas fa-file-alt"></i>
-                    <div class="document-info">
-                        <div class="name">${doc.filename || doc.name || 'Document'}</div>
-                        <div class="meta">${meta}${clientInfo}</div>
+                    <i class="fas fa-file-alt text-primary"></i>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-medium truncate">${doc.filename || doc.name || 'Document'}</div>
+                        <div class="text-xs text-secondary">${meta}${clientInfo}</div>
                     </div>
-                    <button class="delete-doc-btn" data-id="${doc.id}">
+                    <button class="delete-doc-btn p-1 text-secondary hover:text-error-text transition-colors" data-id="${doc.id}">
                         <i class="fas fa-trash"></i>
                     </button>
                 `;
@@ -2167,7 +923,6 @@
             const totalFiles = files.length;
             let uploadedCount = 0;
             
-            // Get OCR settings from checkboxes
             const useOcr = document.getElementById('useOcrCheckbox')?.checked ?? true;
             const fastMode = document.getElementById('fastModeCheckbox')?.checked ?? false;
             
@@ -2177,12 +932,9 @@
                 
                 const formData = new FormData();
                 formData.append('files', file);
-                
-                // Add OCR settings
                 formData.append('use_ocr', useOcr);
                 formData.append('fast_mode', fastMode);
                 
-                // Add client info if selected
                 if (currentClientId) {
                     formData.append('client_id', currentClientId);
                 }
@@ -2236,21 +988,11 @@
             }
         }
 
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 B';
-            if (!bytes) return '';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-        }
-
         // ============================================================
         // Client Management
         // ============================================================
         async function loadClients() {
             try {
-                // Use the /clients/my/assigned endpoint which returns only accessible clients
                 const response = await fetch(`${API_BASE}/clients/my/assigned`, {
                     headers: getAuthHeaders()
                 });
@@ -2263,7 +1005,6 @@
                 } else if (response.status === 401) {
                     logout();
                 } else {
-                    // Fallback to all clients if assigned endpoint fails
                     const fallbackResponse = await fetch(`${API_BASE}/clients`, {
                         headers: getAuthHeaders()
                     });
@@ -2287,7 +1028,6 @@
                 const option = document.createElement('option');
                 option.value = client.id;
                 option.textContent = client.name;
-                // Select current client, or first client if none selected
                 if (client.id === currentClientId || (!currentClientId && index === 0)) {
                     option.selected = true;
                     if (!currentClientId && index === 0) {
@@ -2309,7 +1049,6 @@
                 const option = document.createElement('option');
                 option.value = client.id;
                 option.textContent = client.name;
-                // Select current client, or first client if none selected
                 if (client.id === currentClientId || (!currentClientId && index === 0)) {
                     option.selected = true;
                     if (!currentClientId && index === 0) {
@@ -2323,8 +1062,8 @@
 
         async function createClient(name) {
             const createBtn = document.getElementById('createClientBtn');
-            createBtn.classList.add('btn-loading');
             createBtn.disabled = true;
+            createBtn.textContent = 'Creating...';
             
             try {
                 const response = await fetch(`${API_BASE}/clients`, {
@@ -2333,8 +1072,8 @@
                     body: JSON.stringify({ name })
                 });
 
-                createBtn.classList.remove('btn-loading');
                 createBtn.disabled = false;
+                createBtn.textContent = 'Create';
                 
                 if (response.ok) {
                     const client = await response.json();
@@ -2351,8 +1090,8 @@
                     showToast(error.detail || 'Failed to create client', 'error');
                 }
             } catch (error) {
-                createBtn.classList.remove('btn-loading');
                 createBtn.disabled = false;
+                createBtn.textContent = 'Create';
                 showToast('Failed to create client', 'error');
             }
         }
@@ -2375,7 +1114,7 @@
         // ============================================================
         // Event Listeners
         // ============================================================
-        logoutBtn.addEventListener('click', logout);
+        logoutBtnModal.addEventListener('click', logout);
 
         chatInput.addEventListener('input', autoResizeInput);
 
@@ -2402,16 +1141,16 @@
 
         uploadZone.addEventListener('dragover', (e) => {
             e.preventDefault();
-            uploadZone.classList.add('drag-over');
+            uploadZone.classList.add('border-accent-solid', 'bg-element-hover');
         });
 
         uploadZone.addEventListener('dragleave', () => {
-            uploadZone.classList.remove('drag-over');
+            uploadZone.classList.remove('border-accent-solid', 'bg-element-hover');
         });
 
         uploadZone.addEventListener('drop', (e) => {
             e.preventDefault();
-            uploadZone.classList.remove('drag-over');
+            uploadZone.classList.remove('border-accent-solid', 'bg-element-hover');
             uploadFiles(e.dataTransfer.files);
         });
 
@@ -2419,21 +1158,17 @@
             uploadFiles(e.target.files);
         });
 
-        // Client selector events - sync both selectors
         document.getElementById('clientSelect').addEventListener('change', (e) => {
             currentClientId = e.target.value;
             localStorage.setItem('current_client_id', currentClientId);
-            // Sync chat client selector
             const chatSelect = document.getElementById('chatClientSelect');
             if (chatSelect) chatSelect.value = currentClientId;
             loadDocuments();
         });
 
-        // Chat header client selector
         document.getElementById('chatClientSelect').addEventListener('change', (e) => {
             currentClientId = e.target.value;
             localStorage.setItem('current_client_id', currentClientId);
-            // Sync documents panel selector
             const docsSelect = document.getElementById('clientSelect');
             if (docsSelect) docsSelect.value = currentClientId;
         });
@@ -2471,17 +1206,60 @@
             }
         });
 
+        // Settings Modal Logic
+        settingsBtn.addEventListener('click', () => {
+            settingsModal.classList.remove('hidden');
+        });
+
+        closeSettingsBtn.addEventListener('click', () => {
+            settingsModal.classList.add('hidden');
+        });
+
+        themeToggleBtn.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            
+            // Update icon
+            const icon = themeToggleBtn.querySelector('i');
+            if (newTheme === 'dark') {
+                icon.className = 'fas fa-sun';
+                themeToggleBtn.innerHTML = '<i class="fas fa-sun"></i> Light Mode';
+            } else {
+                icon.className = 'fas fa-moon';
+                themeToggleBtn.innerHTML = '<i class="fas fa-moon"></i> Dark Mode';
+            }
+        });
+
+        // Copy Code Logic
+        function addCopyButtons(container) {
+            container.querySelectorAll('pre').forEach(pre => {
+                if (pre.querySelector('.copy-btn')) return;
+                
+                const btn = document.createElement('button');
+                btn.className = 'copy-btn';
+                btn.textContent = 'Copy';
+                btn.onclick = () => {
+                    const code = pre.querySelector('code')?.innerText || pre.innerText;
+                    navigator.clipboard.writeText(code);
+                    btn.textContent = 'Copied!';
+                    setTimeout(() => btn.textContent = 'Copy', 2000);
+                };
+                pre.appendChild(btn);
+            });
+        }
+
         // ============================================================
         // Initialize
         // ============================================================
         async function initializeApp() {
-            // Check backend status first
             try {
                 const response = await fetch(`${API_BASE}/status`);
                 if (response.ok) {
                     const data = await response.json();
                     document.getElementById('modelBadge').textContent = data.model || 'AI Model';
-                    updateConnectionStatus(true); // API is reachable
+                    updateConnectionStatus(true);
                 } else {
                     updateConnectionStatus(false);
                 }
@@ -2494,7 +1272,6 @@
             await loadClients();
         }
 
-        // Start app
         checkAuth();
     </script>
 </body>

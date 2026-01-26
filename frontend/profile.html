@@ -1,346 +1,91 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile & Settings</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
     <style>
-        :root {
-            --accent: #22d3ee;
-            --accent-hover: #06b6d4;
-            --accent-glow: rgba(34, 211, 238, 0.4);
-            --accent-dim: rgba(34, 211, 238, 0.15);
-            --primary: #22d3ee;
-            --primary-hover: #06b6d4;
-            --bg: #030712;
-            --bg-secondary: #0a0f1a;
-            --panel: #111827;
-            --elevated: #1f2937;
-            --muted: #6b7280;
-            --text: #f9fafb;
-            --text-secondary: #9ca3af;
-            --border: #1f2937;
-            --success: #34d399;
-            --error: #f87171;
-            --warning: #fbbf24;
-            --radius: 12px;
-            --shadow: 0 12px 30px rgba(0,0,0,0.5);
-        }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            font-family: 'Outfit', -apple-system, sans-serif; 
-            background: var(--bg); 
-            color: var(--text); 
-            min-height: 100vh;
-        }
-        
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background: 
-                radial-gradient(circle at 0% 0%, var(--accent-dim) 0%, transparent 50%),
-                radial-gradient(circle at 100% 100%, rgba(168, 85, 247, 0.05) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: 0;
-        }
-        
-        a { color: inherit; text-decoration: none; }
-
-        .app { display: grid; grid-template-rows: auto 1fr; height: 100vh; position: relative; z-index: 1; }
-        header { 
-            display: flex; 
-            align-items: center; 
-            justify-content: space-between; 
-            padding: 16px 24px; 
-            border-bottom: 1px solid var(--border); 
-            background: var(--bg-secondary); 
-            position: sticky; 
-            top: 0; 
-            z-index: 10;
-            backdrop-filter: blur(10px);
-        }
-        .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: 0.4px; }
-        .brand-badge { 
-            width: 40px; 
-            height: 40px; 
-            border-radius: var(--radius); 
-            background: linear-gradient(135deg, var(--accent), #a855f7); 
-            display: grid; 
-            place-items: center; 
-            font-weight: 800; 
-            box-shadow: 0 0 20px var(--accent-glow);
-            color: var(--bg);
-        }
-        nav { display: flex; gap: 8px; flex-wrap: wrap; }
-        .tab { 
-            padding: 10px 16px; 
-            border-radius: var(--radius); 
-            background: transparent; 
-            color: var(--text-secondary); 
-            border: 1px solid transparent; 
-            cursor: pointer; 
-            transition: all 0.2s ease;
-            font-family: inherit;
-            font-size: 0.875rem;
-        }
-        .tab.active { 
-            background: var(--accent-dim); 
-            color: var(--accent); 
-            border-color: rgba(34, 211, 238, 0.3); 
-            box-shadow: 0 0 20px var(--accent-glow);
-        }
-        .tab:hover:not(.active) { 
-            color: var(--text); 
-            border-color: var(--border);
-            background: var(--panel);
-        }
-        .actions { display: flex; gap: 10px; align-items: center; }
-        .pill { 
-            padding: 8px 14px; 
-            border-radius: 999px; 
-            background: var(--accent-dim); 
-            color: var(--accent); 
-            border: 1px solid rgba(34, 211, 238, 0.2); 
-            font-size: 13px;
-            font-weight: 500;
-        }
-        button.btn { 
-            border: none; 
-            cursor: pointer; 
-            border-radius: var(--radius); 
-            padding: 10px 18px; 
-            background: linear-gradient(135deg, var(--accent), var(--accent-hover)); 
-            color: var(--bg); 
-            font-family: inherit;
-            font-weight: 600; 
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 10px var(--accent-glow);
-        }
-        button.btn:hover { 
-            transform: translateY(-1px);
-            box-shadow: 0 4px 20px var(--accent-glow);
-        }
-        button.btn.secondary { 
-            background: var(--panel); 
-            color: var(--text); 
-            border: 1px solid var(--border);
-            box-shadow: none;
-        }
-        button.btn.secondary:hover { 
-            border-color: var(--accent);
-            transform: translateY(-1px);
-        }
-        button.btn.danger {
-            background: linear-gradient(135deg, var(--error), #dc2626);
-            box-shadow: 0 2px 10px rgba(248, 113, 113, 0.3);
-        }
-        .btn-link { 
-            background: transparent; 
-            color: var(--text-secondary); 
-            border: none; 
-            cursor: pointer; 
-            display: flex; 
-            align-items: center; 
-            gap: 6px; 
-            font-size: 13px; 
-            font-family: inherit;
-            transition: 0.2s;
-            padding: 8px 12px;
-            border-radius: var(--radius);
-        }
-        .btn-link:hover { 
-            color: var(--accent);
-            background: var(--accent-dim);
-        }
-
-        .grid { 
-            display: grid; 
-            gap: 20px; 
-            padding: 24px; 
-            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-            overflow-y: auto;
-        }
-        .panel { 
-            background: var(--bg-secondary); 
-            border: 1px solid var(--border); 
-            border-radius: var(--radius); 
-            box-shadow: var(--shadow); 
-            padding: 20px; 
-            min-height: 200px;
-            transition: all 0.2s ease;
-        }
-        .panel:hover {
-            border-color: rgba(34, 211, 238, 0.2);
-        }
-        .panel h3 { 
-            margin-bottom: 16px; 
-            font-size: 1rem; 
-            letter-spacing: 0.2px;
+        /* Profile specific styles */
+        .tab-btn {
             display: flex;
             align-items: center;
-            gap: 10px;
-        }
-        .panel h3 i {
-            color: var(--accent);
-        }
-        .panel .muted { color: var(--muted); font-size: 13px; }
-
-        .table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
-        .table th, .table td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
-        .table th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
-        .table tr:hover td { background: var(--panel); }
-        .table code { 
-            font-family: 'JetBrains Mono', monospace;
-            background: var(--panel);
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 12px;
-            color: var(--accent);
-        }
-
-        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 16px; }
-        .stat { 
-            padding: 16px; 
-            border-radius: var(--radius); 
-            border: 1px solid var(--border); 
-            background: var(--panel); 
-            box-shadow: var(--shadow);
-            transition: all 0.2s ease;
-        }
-        .stat:hover {
-            border-color: var(--accent);
-            transform: translateY(-2px);
-        }
-        .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .stat .value { 
-            font-size: 24px; 
-            font-weight: 700; 
-            margin-top: 8px;
-            background: linear-gradient(135deg, var(--text), var(--accent));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 16px; margin-top: 16px; }
-        label { 
-            font-size: 0.75rem; 
-            color: var(--text-secondary); 
-            display: block; 
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-weight: 500;
-        }
-        input, select { 
-            width: 100%; 
-            padding: 12px 14px; 
-            border-radius: var(--radius); 
-            border: 1.5px solid var(--border); 
-            background: var(--bg); 
-            color: var(--text);
-            font-family: inherit;
-            font-size: 0.9375rem;
-            transition: all 0.2s ease;
-        }
-        input:focus, select:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 4px var(--accent-dim);
-        }
-        input::placeholder {
-            color: var(--muted);
-        }
-        .chip { 
-            display: inline-block; 
-            padding: 4px 10px; 
-            border-radius: 999px; 
-            background: var(--accent-dim); 
-            color: var(--accent); 
-            font-size: 12px; 
-            border: 1px solid rgba(34, 211, 238, 0.2);
+            gap: 0.75rem;
+            width: 100%;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: var(--radius-md);
+            transition: all 0.2s;
+            font-size: 0.875rem;
             font-weight: 500;
         }
 
-        .profile-card { display: flex; align-items: center; gap: 24px; padding: 24px; }
-        .profile-avatar { 
-            width: 88px; 
-            height: 88px; 
-            border-radius: 50%; 
-            background: linear-gradient(135deg, var(--accent), #a855f7); 
-            display: grid; 
-            place-items: center; 
-            font-size: 36px; 
-            font-weight: 700; 
-            color: var(--bg); 
-            box-shadow: 0 0 30px var(--accent-glow);
-        }
-        .profile-info { flex: 1; }
-        .profile-info h2 { 
-            font-size: 1.75rem; 
-            margin-bottom: 6px;
-            background: linear-gradient(135deg, var(--text), var(--accent));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .profile-info .role-badge { 
-            display: inline-flex; 
-            align-items: center; 
-            gap: 6px; 
-            padding: 6px 14px; 
-            border-radius: 999px; 
-            font-size: 12px; 
-            font-weight: 600;
-        }
-        .role-badge.admin { 
-            background: rgba(52, 211, 153, 0.15); 
-            color: var(--success); 
-            border: 1px solid rgba(52, 211, 153, 0.3);
-        }
-        .role-badge.user { 
-            background: var(--accent-dim); 
-            color: var(--accent); 
-            border: 1px solid rgba(34, 211, 238, 0.3);
+        .tab-btn:hover {
+            background-color: var(--bg-element-hover);
+            color: var(--text-primary);
         }
 
-        .hidden { display: none; }
-        .badge-success { color: var(--success); }
-        .badge-error { color: var(--error); }
-        
-        /* Scrollbar styling */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: var(--bg); }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+        .tab-btn.active {
+            background-color: var(--bg-element-active);
+            color: var(--text-primary);
+        }
+
+        .tab-btn i {
+            width: 1.25rem;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
-<div id="app" class="app hidden">
-    <header>
-        <div class="brand">
-            <div class="brand-badge">P</div>
-            <div>Profile & Settings</div>
-        </div>
-        <nav id="tabs"></nav>
-        <div class="actions">
-            <button class="btn-link" onclick="window.location.href='/'">
-                <i class="fa fa-comments"></i> Back to Chat
-            </button>
-            <div id="userBadge" class="pill">-</div>
-            <button class="btn secondary" id="logoutBtn">Logout</button>
-        </div>
-    </header>
+    <div id="app" class="app-container hidden">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="flex items-center gap-2 font-semibold">
+                    <div class="w-8 h-8 rounded bg-accent-solid text-inverse flex items-center justify-center">
+                        <i class="fas fa-cog"></i>
+                    </div>
+                    <span>Settings</span>
+                </div>
+            </div>
+            <nav class="sidebar-content" id="tabs">
+                <!-- Tabs injected here -->
+            </nav>
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn btn-ghost w-full justify-start text-error">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </aside>
 
-    <main id="content"></main>
-</div>
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="chat-header">
+                <h3 id="pageTitle">Profile</h3>
+                <div class="flex items-center gap-4">
+                    <div id="userBadge" class="text-sm font-medium px-3 py-1 rounded-md bg-element border border-subtle"></div>
+                    <button onclick="window.location.href='/'" class="btn btn-secondary text-sm">
+                        <i class="fas fa-arrow-left"></i> Back to Chat
+                    </button>
+                </div>
+            </header>
+            <div id="content" class="p-6 overflow-y-auto h-full">
+                <!-- Content injected here -->
+            </div>
+        </main>
+    </div>
 
 <script>
-    // Use same origin for API calls (nginx proxies to backend)
+    // Initialize Theme
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+
     const API_BASE = window.location.origin;
     const allTabs = [
         { id: 'profile', label: 'Profile', icon: 'fa-user', adminOnly: false },
@@ -351,6 +96,21 @@
         { id: 'stats', label: 'Stats', icon: 'fa-chart-line', adminOnly: true },
     ];
     
+    let authToken = localStorage.getItem('auth_token');
+    let currentTab = 'profile';
+    let currentUserInfo = null;
+
+    const appView = document.getElementById('app');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userBadge = document.getElementById('userBadge');
+    const content = document.getElementById('content');
+    const tabsContainer = document.getElementById('tabs');
+    const pageTitle = document.getElementById('pageTitle');
+
+    function redirectToLogin() {
+        window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
+    }
+
     function getVisibleTabs() {
         if (currentUserInfo && currentUserInfo.is_superuser) {
             return allTabs;
@@ -358,34 +118,29 @@
         return allTabs.filter(t => !t.adminOnly);
     }
 
-    let authToken = localStorage.getItem('auth_token');
-    let currentTab = 'profile'; // Default to profile
-
-    const appView = document.getElementById('app');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const userBadge = document.getElementById('userBadge');
-    const content = document.getElementById('content');
-    const tabsContainer = document.getElementById('tabs');
-
-    function redirectToLogin() {
-        window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
-    }
-
     function rebuildTabs() {
         const visibleTabs = getVisibleTabs();
-        tabsContainer.innerHTML = visibleTabs.map(t => `<button class="tab" data-id="${t.id}"><i class="fa ${t.icon}"></i> ${t.label}</button>`).join('');
+        tabsContainer.innerHTML = visibleTabs.map(t => `
+            <button class="tab-btn ${t.id === currentTab ? 'active' : ''}" data-id="${t.id}">
+                <i class="fa ${t.icon}"></i> ${t.label}
+            </button>
+        `).join('');
         
-        // If current tab is not visible, switch to first available tab
+        // Update page title
+        const activeTab = visibleTabs.find(t => t.id === currentTab);
+        if (activeTab) pageTitle.textContent = activeTab.label;
+
         if (!visibleTabs.find(t => t.id === currentTab)) {
             currentTab = visibleTabs[0]?.id || 'profile';
+            rebuildTabs(); // Recurse once to fix selection
         }
     }
     
     tabsContainer.addEventListener('click', (e) => {
-        const btn = e.target.closest('button.tab');
+        const btn = e.target.closest('button.tab-btn');
         if (!btn) return;
         currentTab = btn.dataset.id;
-        renderTabs();
+        rebuildTabs();
         loadTab();
     });
 
@@ -399,11 +154,8 @@
     function getHeaders() {
         return { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` };
     }
-
-    let currentUserInfo = null;
     
     async function bootstrap() {
-        // If no token, redirect to login
         if (!authToken) {
             redirectToLogin();
             return;
@@ -414,48 +166,20 @@
             if (!me.ok) throw new Error('Auth failed');
             const user = await me.json();
             currentUserInfo = user;
-            userBadge.textContent = user.username || 'user';
-            userBadge.title = user.is_superuser ? 'Admin' : 'Regular User';
-            if (user.is_superuser) {
-                userBadge.style.background = 'rgba(16, 185, 129, 0.2)';
-                userBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-            } else {
-                userBadge.style.background = 'rgba(239, 68, 68, 0.2)';
-                userBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-            }
+            userBadge.textContent = `${user.username} (${user.is_superuser ? 'Admin' : 'User'})`;
+            
             appView.classList.remove('hidden');
-            renderTabs();
+            rebuildTabs();
             loadTab();
         } catch (err) {
-            // Auth failed, redirect to login
             localStorage.removeItem('auth_token');
             localStorage.removeItem('user');
             redirectToLogin();
         }
     }
 
-    function renderTabs() {
-        rebuildTabs();
-        Array.from(tabsContainer.querySelectorAll('.tab')).forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.id === currentTab);
-        });
-    }
-    
-    function renderAdminWarning() {
-        return '';
-    }
-    
-    function renderUserInfo() {
-        if (currentUserInfo && !currentUserInfo.is_superuser) {
-            return `<div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; font-size: 13px;">
-                <i class="fa fa-info-circle" style="color: var(--primary);"></i>
-                <span>Logged in as <strong>${currentUserInfo.username}</strong>. You can manage clients from this page.</span>
-            </div>`;
-        }
-        return '';
-    }
-
     async function loadTab() {
+        content.innerHTML = '<div class="flex items-center justify-center p-8"><div class="loading-spinner"></div></div>';
         if (currentTab === 'profile') return renderProfile();
         if (currentTab === 'audit') return renderAudit();
         if (currentTab === 'users') return renderUsers();
@@ -470,84 +194,66 @@
     async function renderProfile() {
         const user = currentUserInfo;
         const initials = user.username ? user.username.substring(0, 2).toUpperCase() : 'U';
-        const roleClass = user.is_superuser ? 'admin' : 'user';
-        const roleText = user.is_superuser ? 'Administrator' : 'User';
         
         content.innerHTML = `
-            <div class="grid">
-                <div class="panel" style="grid-column: 1 / -1;">
-                    <div class="profile-card">
-                        <div class="profile-avatar">${initials}</div>
-                        <div class="profile-info">
-                            <h2>${user.username}</h2>
-                            <div class="muted" style="margin-bottom: 8px;">${user.email || 'No email set'}</div>
-                            <span class="role-badge ${roleClass}">
-                                <i class="fa ${user.is_superuser ? 'fa-shield-halved' : 'fa-user'}"></i>
-                                ${roleText}
-                            </span>
-                        </div>
+            <div class="flex flex-col gap-6 max-w-3xl mx-auto">
+                <!-- Profile Card -->
+                <div class="panel flex items-center gap-6">
+                    <div class="w-20 h-20 rounded-full bg-accent-solid text-inverse flex items-center justify-center text-3xl font-bold">
+                        ${initials}
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold mb-1">${user.username}</h2>
+                        <p class="text-muted mb-2">${user.email || 'No email set'}</p>
+                        <span class="text-xs px-2 py-1 rounded bg-element-active border border-subtle font-medium">
+                            ${user.is_superuser ? 'Administrator' : 'User'}
+                        </span>
                     </div>
                 </div>
                 
+                <!-- Details -->
                 <div class="panel">
-                    <h3><i class="fa fa-info-circle" style="margin-right: 8px;"></i>Account Details</h3>
-                    <table class="table">
-                        <tbody>
-                            <tr><td class="muted" style="width: 140px;">User ID</td><td><code style="background: #162033; padding: 4px 8px; border-radius: 6px; font-size: 12px;">${user.id}</code></td></tr>
-                            <tr><td class="muted">Username</td><td>${user.username}</td></tr>
-                            <tr><td class="muted">Email</td><td>${user.email || '<span class="muted">Not set</span>'}</td></tr>
-                            <tr><td class="muted">Role</td><td><span class="chip">${roleText}</span></td></tr>
-                            <tr><td class="muted">Status</td><td><span class="${user.is_active !== false ? 'badge-success' : 'badge-error'}">${user.is_active !== false ? 'Active' : 'Inactive'}</span></td></tr>
-                            <tr><td class="muted">Created</td><td>${user.created_at ? new Date(user.created_at).toLocaleString() : '-'}</td></tr>
-                        </tbody>
-                    </table>
+                    <h3 class="text-lg font-semibold mb-4">Account Details</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <tbody>
+                                <tr class="border-b border-subtle"><td class="p-3 text-muted w-1/3">User ID</td><td class="p-3 font-mono text-sm">${user.id}</td></tr>
+                                <tr class="border-b border-subtle"><td class="p-3 text-muted">Username</td><td class="p-3">${user.username}</td></tr>
+                                <tr class="border-b border-subtle"><td class="p-3 text-muted">Email</td><td class="p-3">${user.email || '-'}</td></tr>
+                                <tr class="border-b border-subtle"><td class="p-3 text-muted">Status</td><td class="p-3"><span class="text-success-text bg-success-bg px-2 py-0.5 rounded text-xs">Active</span></td></tr>
+                                <tr><td class="p-3 text-muted">Created</td><td class="p-3">${user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
                 
+                <!-- Password -->
                 <div class="panel">
-                    <h3><i class="fa fa-key" style="margin-right: 8px;"></i>Change Password</h3>
-                    <div class="form-grid" style="grid-template-columns: 1fr;">
+                    <h3 class="text-lg font-semibold mb-4">Change Password</h3>
+                    <div class="flex flex-col gap-4">
                         <div>
-                            <label>Current Password</label>
+                            <label class="block text-sm font-medium mb-1 text-secondary">Current Password</label>
                             <input id="currentPass" type="password" placeholder="Enter current password">
                         </div>
-                        <div>
-                            <label>New Password</label>
-                            <input id="newPass" type="password" placeholder="Enter new password">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium mb-1 text-secondary">New Password</label>
+                                <input id="newPass" type="password" placeholder="Enter new password">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium mb-1 text-secondary">Confirm New Password</label>
+                                <input id="confirmPass" type="password" placeholder="Confirm new password">
+                            </div>
                         </div>
-                        <div>
-                            <label>Confirm New Password</label>
-                            <input id="confirmPass" type="password" placeholder="Confirm new password">
+                        <div class="flex items-center gap-4 mt-2">
+                            <button class="btn btn-primary" id="changePassBtn">Update Password</button>
+                            <span id="passMsg" class="text-sm text-muted"></span>
                         </div>
-                    </div>
-                    <div style="margin-top: 12px;">
-                        <button class="btn" id="changePassBtn">Update Password</button>
-                        <span id="passMsg" class="muted" style="margin-left: 10px;"></span>
-                    </div>
-                </div>
-                
-                <div class="panel">
-                    <h3><i class="fa fa-sliders" style="margin-right: 8px;"></i>Quick Actions</h3>
-                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">
-                        <button class="btn secondary" onclick="window.location.href='/'">
-                            <i class="fa fa-comments"></i> Go to Chat
-                        </button>
-                        ${user.is_superuser ? `
-                        <button class="btn secondary" onclick="currentTab='users'; renderTabs(); loadTab();">
-                            <i class="fa fa-user-shield"></i> Manage Users
-                        </button>
-                        <button class="btn secondary" onclick="currentTab='stats'; renderTabs(); loadTab();">
-                            <i class="fa fa-chart-line"></i> View Stats
-                        </button>
-                        ` : ''}
-                        <button class="btn secondary" onclick="currentTab='clients'; renderTabs(); loadTab();">
-                            <i class="fa fa-building"></i> Manage Clients
-                        </button>
                     </div>
                 </div>
             </div>
         `;
         
-        // Password change handler
         document.getElementById('changePassBtn').addEventListener('click', async () => {
             const currentPass = document.getElementById('currentPass').value;
             const newPass = document.getElementById('newPass').value;
@@ -556,59 +262,46 @@
             
             if (!currentPass || !newPass) {
                 msg.textContent = 'Please fill in all fields';
-                msg.className = 'muted badge-error';
+                msg.className = 'text-sm text-error-text';
                 return;
             }
-            
             if (newPass !== confirmPass) {
                 msg.textContent = 'New passwords do not match';
-                msg.className = 'muted badge-error';
+                msg.className = 'text-sm text-error-text';
                 return;
             }
-            
             if (newPass.length < 6) {
                 msg.textContent = 'Password must be at least 6 characters';
-                msg.className = 'muted badge-error';
+                msg.className = 'text-sm text-error-text';
                 return;
             }
             
             msg.textContent = 'Updating...';
-            msg.className = 'muted';
+            msg.className = 'text-sm text-muted';
             
             try {
-                // First verify current password by trying to login
                 const loginRes = await fetch(`${API_BASE}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username: currentUserInfo.username, password: currentPass }),
                 });
+                if (!loginRes.ok) throw new Error('Current password is incorrect');
                 
-                if (!loginRes.ok) {
-                    msg.textContent = 'Current password is incorrect';
-                    msg.className = 'muted badge-error';
-                    return;
-                }
-                
-                // Update password via admin endpoint (for self) or dedicated endpoint
                 const res = await fetch(`${API_BASE}/auth/change-password`, {
                     method: 'POST',
                     headers: getHeaders(),
                     body: JSON.stringify({ current_password: currentPass, new_password: newPass }),
                 });
-                
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    throw new Error(err.detail || 'Failed to update password');
-                }
+                if (!res.ok) throw new Error((await res.json()).detail || 'Failed to update');
                 
                 msg.textContent = 'Password updated successfully!';
-                msg.className = 'muted badge-success';
+                msg.className = 'text-sm text-success-text';
                 document.getElementById('currentPass').value = '';
                 document.getElementById('newPass').value = '';
                 document.getElementById('confirmPass').value = '';
             } catch (err) {
                 msg.textContent = err.message;
-                msg.className = 'muted badge-error';
+                msg.className = 'text-sm text-error-text';
             }
         });
     }
@@ -617,19 +310,22 @@
     // AUDIT TAB
     // ============================================================
     async function renderAudit() {
-        content.innerHTML = `${renderAdminWarning()}<div class="grid" style="grid-template-columns: 1fr;">
-            <div class="panel">
-                <h3>Audit Log Filters</h3>
-                <div class="form-grid" style="grid-template-columns: repeat(5, 1fr);">
-                    <div><label>Username</label><input id="filterUser" placeholder="Filter by user" /></div>
-                    <div><label>Action</label><select id="filterAction"><option value="">All Actions</option></select></div>
-                    <div><label>Method</label><select id="filterMethod"><option value="">All Methods</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></div>
-                    <div><label>Status Code</label><input id="filterStatus" type="number" placeholder="e.g. 200" /></div>
-                    <div style="display:flex;align-items:flex-end;"><button class="btn" id="applyFilters">Apply</button></div>
+        content.innerHTML = `
+            <div class="flex flex-col gap-6">
+                <div class="panel">
+                    <h3 class="text-lg font-semibold mb-4">Filters</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Username</label><input id="filterUser" placeholder="Filter by user" /></div>
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Action</label><select id="filterAction"><option value="">All Actions</option></select></div>
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Method</label><select id="filterMethod"><option value="">All Methods</option><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select></div>
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Status</label><input id="filterStatus" type="number" placeholder="e.g. 200" /></div>
+                        <button class="btn btn-secondary w-full" id="applyFilters">Apply Filters</button>
+                    </div>
                 </div>
-            </div>
-            <div class="panel" id="auditPanel"><h3>Recent Audit Logs</h3><div class="muted">Loading...</div></div>
-        </div>`;
+                <div class="panel" id="auditPanel">
+                    <div class="flex items-center justify-center p-8"><div class="loading-spinner"></div></div>
+                </div>
+            </div>`;
         
         try {
             const actRes = await fetch(`${API_BASE}/admin/audit-logs/actions`, { headers: getHeaders() });
@@ -661,24 +357,26 @@
             if (!res.ok) throw new Error('Failed to load logs');
             const data = await res.json();
             const rows = data.items.map(log => `
-                <tr>
-                    <td>${log.username || '-'}</td>
-                    <td><span class="chip">${log.action}</span></td>
-                    <td>${log.method || ''} ${log.path || ''}</td>
-                    <td class="${log.status_code >= 400 ? 'badge-error' : ''}">${log.status_code || ''}</td>
-                    <td>${log.duration_ms ? log.duration_ms.toFixed(0) + 'ms' : '-'}</td>
-                    <td>${new Date(log.timestamp).toLocaleString()}</td>
+                <tr class="border-b border-subtle last:border-0 hover:bg-element-hover">
+                    <td class="p-3">${log.username || '-'}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded bg-element-active text-xs font-mono">${log.action}</span></td>
+                    <td class="p-3 text-sm font-mono text-muted">${log.method || ''} ${log.path || ''}</td>
+                    <td class="p-3"><span class="${log.status_code >= 400 ? 'text-error-text' : 'text-success-text'}">${log.status_code || ''}</span></td>
+                    <td class="p-3 text-sm text-muted">${log.duration_ms ? log.duration_ms.toFixed(0) + 'ms' : '-'}</td>
+                    <td class="p-3 text-sm text-muted">${new Date(log.timestamp).toLocaleString()}</td>
                 </tr>
             `).join('');
             document.getElementById('auditPanel').innerHTML = `
-                <h3>Audit Logs (${data.total} total)</h3>
-                <table class="table">
-                    <thead><tr><th>User</th><th>Action</th><th>Path</th><th>Status</th><th>Duration</th><th>When</th></tr></thead>
-                    <tbody>${rows || '<tr><td colspan="6" class="muted">No logs found</td></tr>'}</tbody>
-                </table>
+                <h3 class="text-lg font-semibold mb-4">Recent Logs (${data.total})</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead><tr class="bg-element-hover border-b border-subtle"><th class="p-3 font-medium text-secondary">User</th><th class="p-3 font-medium text-secondary">Action</th><th class="p-3 font-medium text-secondary">Path</th><th class="p-3 font-medium text-secondary">Status</th><th class="p-3 font-medium text-secondary">Duration</th><th class="p-3 font-medium text-secondary">Time</th></tr></thead>
+                        <tbody>${rows || '<tr><td colspan="6" class="p-4 text-center text-muted">No logs found</td></tr>'}</tbody>
+                    </table>
+                </div>
             `;
         } catch (err) {
-            document.getElementById('auditPanel').innerHTML = `<h3>Audit Logs</h3><div class="muted badge-error">${err.message}</div>`;
+            document.getElementById('auditPanel').innerHTML = `<div class="p-4 text-error-text bg-error-bg rounded-md">${err.message}</div>`;
         }
     }
 
@@ -686,34 +384,42 @@
     // USERS TAB
     // ============================================================
     async function renderUsers() {
-        content.innerHTML = `${renderAdminWarning()}<div class="grid">
-            <div class="panel" id="userList"><h3>Users</h3><div class="muted">Loading...</div></div>
-            <div class="panel">
-                <h3>Create User</h3>
-                <div class="form-grid">
-                    <div><label>Username</label><input id="newUser" placeholder="jane" /></div>
-                    <div><label>Email</label><input id="newEmail" placeholder="jane@example.com" /></div>
-                    <div><label>Password</label><input id="newPass" type="password" /></div>
-                    <div><label>Role</label><select id="newRole"><option value="false">User</option><option value="true">Admin</option></select></div>
+        content.innerHTML = `
+            <div class="flex flex-col gap-6">
+                <div class="panel" id="userList">
+                    <div class="flex items-center justify-center p-8"><div class="loading-spinner"></div></div>
                 </div>
-                <div style="margin-top:10px;"><button class="btn" id="createUserBtn">Create</button><span id="userMsg" class="muted" style="margin-left:8px;"></span></div>
-            </div>
-            <div class="panel" id="editUserPanel" style="display:none;">
-                <h3>Edit User</h3>
-                <input type="hidden" id="editUserId" />
-                <div class="form-grid">
-                    <div><label>Email</label><input id="editEmail" placeholder="new@example.com" /></div>
-                    <div><label>New Password (leave blank to keep)</label><input id="editPass" type="password" /></div>
-                    <div><label>Role</label><select id="editRole"><option value="false">User</option><option value="true">Admin</option></select></div>
-                    <div><label>Status</label><select id="editStatus"><option value="true">Active</option><option value="false">Disabled</option></select></div>
+                <div class="panel">
+                    <h3 class="text-lg font-semibold mb-4">Create User</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Username</label><input id="newUser" placeholder="jane" /></div>
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Email</label><input id="newEmail" placeholder="jane@example.com" /></div>
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Password</label><input id="newPass" type="password" /></div>
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Role</label><select id="newRole"><option value="false">User</option><option value="true">Admin</option></select></div>
+                    </div>
+                    <div class="mt-4 flex items-center gap-4">
+                        <button class="btn btn-primary" id="createUserBtn">Create User</button>
+                        <span id="userMsg" class="text-sm text-muted"></span>
+                    </div>
                 </div>
-                <div style="margin-top:10px;">
-                    <button class="btn" id="saveUserBtn">Save</button>
-                    <button class="btn secondary" id="cancelEditBtn">Cancel</button>
-                    <span id="editMsg" class="muted" style="margin-left:8px;"></span>
+                
+                <!-- Edit Modal (Inline Panel) -->
+                <div class="panel hidden" id="editUserPanel">
+                    <h3 class="text-lg font-semibold mb-4">Edit User</h3>
+                    <input type="hidden" id="editUserId" />
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Email</label><input id="editEmail" /></div>
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">New Password</label><input id="editPass" type="password" placeholder="Leave blank to keep" /></div>
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Role</label><select id="editRole"><option value="false">User</option><option value="true">Admin</option></select></div>
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Status</label><select id="editStatus"><option value="true">Active</option><option value="false">Disabled</option></select></div>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button class="btn btn-primary" id="saveUserBtn">Save Changes</button>
+                        <button class="btn btn-ghost" id="cancelEditBtn">Cancel</button>
+                        <span id="editMsg" class="text-sm text-muted ml-2"></span>
+                    </div>
                 </div>
-            </div>
-        </div>`;
+            </div>`;
 
         document.getElementById('createUserBtn').addEventListener('click', async () => {
             const username = document.getElementById('newUser').value.trim();
@@ -730,12 +436,14 @@
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
                 msg.textContent = 'User created';
+                msg.className = 'text-sm text-success-text';
                 document.getElementById('newUser').value = '';
                 document.getElementById('newEmail').value = '';
                 document.getElementById('newPass').value = '';
                 loadUserList();
             } catch (err) {
                 msg.textContent = err.message;
+                msg.className = 'text-sm text-error-text';
             }
         });
         
@@ -758,7 +466,7 @@
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
                 msg.textContent = 'Updated!';
-                document.getElementById('editUserPanel').style.display = 'none';
+                document.getElementById('editUserPanel').classList.add('hidden');
                 loadUserList();
             } catch (err) {
                 msg.textContent = err.message;
@@ -766,7 +474,7 @@
         });
         
         document.getElementById('cancelEditBtn').addEventListener('click', () => {
-            document.getElementById('editUserPanel').style.display = 'none';
+            document.getElementById('editUserPanel').classList.add('hidden');
         });
 
         loadUserList();
@@ -778,21 +486,23 @@
             if (!res.ok) throw new Error('Failed to load users');
             const data = await res.json();
             const rows = data.map(u => `
-                <tr data-user='${JSON.stringify(u).replace(/'/g, "&#39;")}'>
-                    <td>${u.username}</td>
-                    <td>${u.email || '-'}</td>
-                    <td>${u.is_superuser ? '<span class="badge-success">Admin</span>' : 'User'}</td>
-                    <td>${u.is_active ? '<span class="badge-success">Active</span>' : '<span class="badge-error">Disabled</span>'}</td>
-                    <td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '-'}</td>
-                    <td><button class="btn secondary edit-user-btn" style="padding:5px 10px;font-size:12px;">Edit</button></td>
+                <tr class="border-b border-subtle last:border-0 hover:bg-element-hover" data-user='${JSON.stringify(u).replace(/'/g, "&#39;")}'>
+                    <td class="p-3 font-medium">${u.username}</td>
+                    <td class="p-3 text-muted">${u.email || '-'}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded text-xs ${u.is_superuser ? 'bg-accent-solid text-inverse' : 'bg-element-active'}">${u.is_superuser ? 'Admin' : 'User'}</span></td>
+                    <td class="p-3"><span class="text-xs ${u.is_active ? 'text-success-text' : 'text-error-text'}">${u.is_active ? 'Active' : 'Disabled'}</span></td>
+                    <td class="p-3 text-sm text-muted">${u.created_at ? new Date(u.created_at).toLocaleDateString() : '-'}</td>
+                    <td class="p-3"><button class="btn btn-secondary text-xs py-1 px-2 edit-user-btn">Edit</button></td>
                 </tr>
             `).join('');
             document.getElementById('userList').innerHTML = `
-                <h3>Users (${data.length})</h3>
-                <table class="table">
-                    <thead><tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-                    <tbody>${rows || '<tr><td colspan="6" class="muted">No users</td></tr>'}</tbody>
-                </table>
+                <h3 class="text-lg font-semibold mb-4">Users (${data.length})</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead><tr class="bg-element-hover border-b border-subtle"><th class="p-3 font-medium text-secondary">Username</th><th class="p-3 font-medium text-secondary">Email</th><th class="p-3 font-medium text-secondary">Role</th><th class="p-3 font-medium text-secondary">Status</th><th class="p-3 font-medium text-secondary">Created</th><th class="p-3 font-medium text-secondary">Actions</th></tr></thead>
+                        <tbody>${rows || '<tr><td colspan="6" class="p-4 text-center text-muted">No users</td></tr>'}</tbody>
+                    </table>
+                </div>
             `;
             
             document.querySelectorAll('.edit-user-btn').forEach(btn => {
@@ -804,59 +514,63 @@
                     document.getElementById('editPass').value = '';
                     document.getElementById('editRole').value = user.is_superuser ? 'true' : 'false';
                     document.getElementById('editStatus').value = user.is_active ? 'true' : 'false';
-                    document.getElementById('editUserPanel').style.display = 'block';
+                    document.getElementById('editUserPanel').classList.remove('hidden');
                     document.getElementById('editMsg').textContent = `Editing: ${user.username}`;
+                    document.getElementById('editUserPanel').scrollIntoView({ behavior: 'smooth' });
                 });
             });
         } catch (err) {
-            document.getElementById('userList').innerHTML = `<h3>Users</h3><div class="muted badge-error">${err.message}</div>`;
+            document.getElementById('userList').innerHTML = `<div class="p-4 text-error-text bg-error-bg rounded-md">${err.message}</div>`;
         }
     }
 
     // ============================================================
     // CLIENTS TAB
     // ============================================================
-    let allUsers = []; // Cache users list for assignment UI
+    let allUsers = []; 
     
     async function renderClients() {
         const isAdmin = currentUserInfo && currentUserInfo.is_superuser;
         
-        content.innerHTML = `${renderUserInfo()}<div class="grid">
-            <div class="panel" id="clientList" style="grid-column: 1 / -1;"><h3>Clients</h3><div class="muted">Loading...</div></div>
-            ${isAdmin ? `
-            <div class="panel">
-                <h3><i class="fa fa-plus-circle" style="color: var(--success);"></i> Create Client</h3>
-                <div class="form-grid">
-                    <div><label>Name</label><input id="newClientName" placeholder="Acme Corp" /></div>
-                    <div><label>Aliases (comma-separated)</label><input id="newClientAliases" placeholder="acme, acme-corp" /></div>
+        content.innerHTML = `
+            <div class="flex flex-col gap-6">
+                <div class="panel" id="clientList">
+                    <div class="flex items-center justify-center p-8"><div class="loading-spinner"></div></div>
                 </div>
-                <div style="margin-top:10px;"><button class="btn" id="createClientBtn">Create</button><span id="clientMsg" class="muted" style="margin-left:8px;"></span></div>
-            </div>
-            <div class="panel" id="userAccessPanel">
-                <h3><i class="fa fa-user-plus" style="color: var(--accent);"></i> User Access Management</h3>
-                <div class="form-grid">
-                    <div>
-                        <label>Select Client</label>
-                        <select id="accessClientSelect" style="width:100%;padding:10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg);color:var(--text);">
-                            <option value="">-- Select a client --</option>
-                        </select>
+                ${isAdmin ? `
+                <div class="panel">
+                    <h3 class="text-lg font-semibold mb-4">Create Client</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Name</label><input id="newClientName" placeholder="Acme Corp" /></div>
+                        <div><label class="block text-sm font-medium mb-1 text-secondary">Aliases (comma-separated)</label><input id="newClientAliases" placeholder="acme, acme-corp" /></div>
                     </div>
-                    <div>
-                        <label>Select User</label>
-                        <select id="accessUserSelect" style="width:100%;padding:10px;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg);color:var(--text);">
-                            <option value="">-- Select a user --</option>
-                        </select>
+                    <div class="mt-4 flex items-center gap-4">
+                        <button class="btn btn-primary" id="createClientBtn">Create Client</button>
+                        <span id="clientMsg" class="text-sm text-muted"></span>
                     </div>
                 </div>
-                <div style="margin-top:10px;display:flex;gap:8px;">
-                    <button class="btn" id="assignUserBtn"><i class="fa fa-plus"></i> Grant Access</button>
-                    <button class="btn secondary" id="revokeUserBtn" style="color:var(--error);"><i class="fa fa-minus"></i> Revoke Access</button>
+                
+                <div class="panel" id="userAccessPanel">
+                    <h3 class="text-lg font-semibold mb-4">User Access Management</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-1 text-secondary">Select Client</label>
+                            <select id="accessClientSelect"><option value="">-- Select a client --</option></select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1 text-secondary">Select User</label>
+                            <select id="accessUserSelect"><option value="">-- Select a user --</option></select>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex gap-2">
+                        <button class="btn btn-primary" id="assignUserBtn">Grant Access</button>
+                        <button class="btn btn-secondary text-error-text" id="revokeUserBtn">Revoke Access</button>
+                    </div>
+                    <div id="accessMsg" class="text-sm text-muted mt-2"></div>
+                    <div id="clientUsersPreview" class="mt-4"></div>
                 </div>
-                <div id="accessMsg" class="muted" style="margin-top:8px;"></div>
-                <div id="clientUsersPreview" style="margin-top:16px;"></div>
-            </div>
-            ` : ''}
-        </div>`;
+                ` : ''}
+            </div>`;
 
         if (isAdmin) {
             document.getElementById('createClientBtn').addEventListener('click', async () => {
@@ -873,22 +587,20 @@
                     });
                     if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
                     msg.textContent = 'Client created';
-                    msg.className = 'muted badge-success';
+                    msg.className = 'text-sm text-success-text';
                     document.getElementById('newClientName').value = '';
                     document.getElementById('newClientAliases').value = '';
                     loadClientList();
                 } catch (err) {
                     msg.textContent = err.message;
-                    msg.className = 'muted badge-error';
+                    msg.className = 'text-sm text-error-text';
                 }
             });
             
-            // User access management
             document.getElementById('assignUserBtn').addEventListener('click', assignUserToClient);
             document.getElementById('revokeUserBtn').addEventListener('click', revokeUserFromClient);
             document.getElementById('accessClientSelect').addEventListener('change', loadClientUsersPreview);
             
-            // Load users for dropdown
             loadUsersForAccessPanel();
         }
 
@@ -911,9 +623,7 @@
                     });
                 }
             }
-        } catch (err) {
-            console.error('Failed to load users:', err);
-        }
+        } catch (err) { console.error(err); }
     }
     
     async function assignUserToClient() {
@@ -923,12 +633,12 @@
         
         if (!clientId || !userId) {
             msg.textContent = 'Please select both a client and a user';
-            msg.className = 'muted badge-error';
+            msg.className = 'text-error-text';
             return;
         }
         
         msg.textContent = 'Assigning...';
-        msg.className = 'muted';
+        msg.className = 'text-muted';
         
         try {
             const res = await fetch(`${API_BASE}/clients/${clientId}/users/${userId}`, {
@@ -937,17 +647,15 @@
             });
             
             if (res.ok) {
-                const data = await res.json();
-                msg.textContent = data.message || 'User assigned successfully';
-                msg.className = 'muted badge-success';
+                msg.textContent = 'User assigned successfully';
+                msg.className = 'text-success-text';
                 loadClientUsersPreview();
             } else {
-                const err = await res.json();
-                throw new Error(err.detail || 'Failed to assign user');
+                throw new Error((await res.json()).detail || 'Failed');
             }
         } catch (err) {
             msg.textContent = err.message;
-            msg.className = 'muted badge-error';
+            msg.className = 'text-error-text';
         }
     }
     
@@ -958,14 +666,11 @@
         
         if (!clientId || !userId) {
             msg.textContent = 'Please select both a client and a user';
-            msg.className = 'muted badge-error';
+            msg.className = 'text-error-text';
             return;
         }
         
-        if (!confirm('Are you sure you want to revoke this user\'s access to this client?')) return;
-        
-        msg.textContent = 'Revoking...';
-        msg.className = 'muted';
+        if (!confirm('Revoke access?')) return;
         
         try {
             const res = await fetch(`${API_BASE}/clients/${clientId}/users/${userId}`, {
@@ -975,15 +680,14 @@
             
             if (res.ok) {
                 msg.textContent = 'Access revoked successfully';
-                msg.className = 'muted badge-success';
+                msg.className = 'text-success-text';
                 loadClientUsersPreview();
             } else {
-                const err = await res.json();
-                throw new Error(err.detail || 'Failed to revoke access');
+                throw new Error((await res.json()).detail || 'Failed');
             }
         } catch (err) {
             msg.textContent = err.message;
-            msg.className = 'muted badge-error';
+            msg.className = 'text-error-text';
         }
     }
     
@@ -996,7 +700,7 @@
             return;
         }
         
-        preview.innerHTML = '<div class="muted">Loading users...</div>';
+        preview.innerHTML = '<div class="text-sm text-muted">Loading users...</div>';
         
         try {
             const res = await fetch(`${API_BASE}/clients/${clientId}/users`, { headers: getHeaders() });
@@ -1005,35 +709,25 @@
                 const users = data.users || [];
                 
                 if (users.length === 0) {
-                    preview.innerHTML = `
-                        <div style="background:var(--panel);border-radius:var(--radius);padding:12px;border:1px solid var(--border);">
-                            <div class="muted" style="text-align:center;">
-                                <i class="fa fa-users" style="font-size:1.5rem;margin-bottom:8px;display:block;"></i>
-                                No users have access to this client yet
-                            </div>
-                        </div>
-                    `;
+                    preview.innerHTML = '<div class="p-3 bg-element rounded border border-subtle text-sm text-muted text-center">No users assigned</div>';
                 } else {
                     const userChips = users.map(u => `
-                        <span class="chip" style="margin:2px;display:inline-flex;align-items:center;gap:4px;">
-                            <i class="fa fa-user" style="font-size:10px;"></i>
-                            ${u.username}
-                            ${u.is_superuser ? '<i class="fa fa-shield" style="font-size:10px;color:var(--success);" title="Admin"></i>' : ''}
+                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-element-active border border-subtle text-xs">
+                            <i class="fas fa-user text-muted"></i> ${u.username}
+                            ${u.is_superuser ? '<i class="fas fa-shield-alt text-success-text"></i>' : ''}
                         </span>
                     `).join('');
                     
                     preview.innerHTML = `
-                        <div style="background:var(--panel);border-radius:var(--radius);padding:12px;border:1px solid var(--border);">
-                            <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:8px;">
-                                Users with access (${users.length})
-                            </div>
-                            <div>${userChips}</div>
+                        <div class="p-3 bg-element rounded border border-subtle">
+                            <div class="text-xs font-medium text-secondary uppercase tracking-wider mb-2">Users with access (${users.length})</div>
+                            <div class="flex flex-wrap gap-2">${userChips}</div>
                         </div>
                     `;
                 }
             }
         } catch (err) {
-            preview.innerHTML = `<div class="muted badge-error">Failed to load users</div>`;
+            preview.innerHTML = '<div class="text-sm text-error-text">Failed to load users</div>';
         }
     }
 
@@ -1046,7 +740,6 @@
             const data = await res.json();
             const clients = data.clients || [];
             
-            // Update access panel dropdown
             const accessSelect = document.getElementById('accessClientSelect');
             if (accessSelect) {
                 accessSelect.innerHTML = '<option value="">-- Select a client --</option>';
@@ -1059,30 +752,34 @@
             }
             
             const rows = clients.map(c => `
-                <tr>
-                    <td title="${c.id}"><code style="font-size:11px;background:var(--panel);padding:2px 6px;border-radius:4px;">${c.id.substring(0, 8)}...</code></td>
-                    <td><strong>${c.name}</strong></td>
-                    <td>${c.aliases?.join(', ') || '<span class="muted">-</span>'}</td>
-                    <td>${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
-                    <td>
+                <tr class="border-b border-subtle last:border-0 hover:bg-element-hover">
+                    <td class="p-3 font-mono text-xs text-muted" title="${c.id}">${c.id.substring(0, 8)}...</td>
+                    <td class="p-3 font-medium">${c.name}</td>
+                    <td class="p-3 text-sm text-muted">${c.aliases?.join(', ') || '-'}</td>
+                    <td class="p-3 text-sm text-muted">${c.created_at ? new Date(c.created_at).toLocaleDateString() : '-'}</td>
+                    <td class="p-3">
                         ${isAdmin ? `
-                        <button class="btn secondary view-users-btn" data-id="${c.id}" data-name="${c.name}" style="padding:5px 10px;font-size:12px;margin-right:4px;">
-                            <i class="fa fa-users"></i>
-                        </button>
-                        <button class="btn secondary delete-client-btn" data-id="${c.id}" data-name="${c.name}" style="padding:5px 10px;font-size:12px;color:#ef4444;">
-                            <i class="fa fa-trash"></i>
-                        </button>
+                        <div class="flex gap-2">
+                            <button class="btn btn-secondary text-xs py-1 px-2 view-users-btn" data-id="${c.id}">
+                                <i class="fas fa-users"></i>
+                            </button>
+                            <button class="btn btn-secondary text-xs py-1 px-2 text-error-text delete-client-btn" data-id="${c.id}" data-name="${c.name}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                         ` : '-'}
                     </td>
                 </tr>
             `).join('');
             
             document.getElementById('clientList').innerHTML = `
-                <h3><i class="fa fa-building" style="margin-right:8px;"></i>Clients (${clients.length})</h3>
-                <table class="table">
-                    <thead><tr><th>ID</th><th>Name</th><th>Aliases</th><th>Created</th><th>Actions</th></tr></thead>
-                    <tbody>${rows || '<tr><td colspan="5" class="muted">No clients</td></tr>'}</tbody>
-                </table>
+                <h3 class="text-lg font-semibold mb-4">Clients (${clients.length})</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead><tr class="bg-element-hover border-b border-subtle"><th class="p-3 font-medium text-secondary">ID</th><th class="p-3 font-medium text-secondary">Name</th><th class="p-3 font-medium text-secondary">Aliases</th><th class="p-3 font-medium text-secondary">Created</th><th class="p-3 font-medium text-secondary">Actions</th></tr></thead>
+                        <tbody>${rows || '<tr><td colspan="5" class="p-4 text-center text-muted">No clients</td></tr>'}</tbody>
+                    </table>
+                </div>
             `;
             
             if (isAdmin) {
@@ -1090,7 +787,7 @@
                     btn.addEventListener('click', async (e) => {
                         const clientId = btn.dataset.id;
                         const clientName = btn.dataset.name;
-                        if (!confirm(`Delete client "${clientName}"?\n\nThis will NOT delete their documents. To also delete documents, use delete_documents=true parameter.`)) return;
+                        if (!confirm(`Delete client "${clientName}"?`)) return;
                         
                         try {
                             const res = await fetch(`${API_BASE}/clients/${clientId}?delete_documents=false`, {
@@ -1099,9 +796,7 @@
                             });
                             if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
                             loadClientList();
-                        } catch (err) {
-                            alert('Delete failed: ' + err.message);
-                        }
+                        } catch (err) { alert(err.message); }
                     });
                 });
                 
@@ -1110,13 +805,12 @@
                         const clientId = btn.dataset.id;
                         document.getElementById('accessClientSelect').value = clientId;
                         loadClientUsersPreview();
-                        // Scroll to access panel
                         document.getElementById('userAccessPanel').scrollIntoView({ behavior: 'smooth' });
                     });
                 });
             }
         } catch (err) {
-            document.getElementById('clientList').innerHTML = `<h3>Clients</h3><div class="muted badge-error">${err.message}</div>`;
+            document.getElementById('clientList').innerHTML = `<div class="p-4 text-error-text bg-error-bg rounded-md">${err.message}</div>`;
         }
     }
 
@@ -1124,27 +818,37 @@
     // EVALUATION TAB
     // ============================================================
     async function renderEvaluation() {
-        content.innerHTML = `${renderAdminWarning()}<div class="grid">
-            <div class="panel" id="datasetPanel"><h3>Datasets</h3><div class="muted">Loading...</div></div>
-            <div class="panel" id="runPanel"><h3>Runs</h3><div class="muted">Loading...</div></div>
-            <div class="panel">
-                <h3>Generate Dataset</h3>
-                <div class="form-grid">
-                    <div><label>Name</label><input id="dsName" placeholder="Daily sample" /></div>
-                    <div><label>Client Id (optional)</label><input id="dsClient" placeholder="client-123" /></div>
-                    <div><label>Sample Size</label><input id="dsSize" type="number" min="1" max="500" placeholder="50" /></div>
+        content.innerHTML = `
+            <div class="flex flex-col gap-6">
+                <div class="panel" id="datasetPanel"><div class="loading-spinner"></div></div>
+                <div class="panel" id="runPanel"><div class="loading-spinner"></div></div>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="panel">
+                        <h3 class="text-lg font-semibold mb-4">Generate Dataset</h3>
+                        <div class="flex flex-col gap-4">
+                            <div><label class="block text-sm font-medium mb-1 text-secondary">Name</label><input id="dsName" placeholder="Daily sample" /></div>
+                            <div><label class="block text-sm font-medium mb-1 text-secondary">Client Id (optional)</label><input id="dsClient" placeholder="client-123" /></div>
+                            <div><label class="block text-sm font-medium mb-1 text-secondary">Sample Size</label><input id="dsSize" type="number" min="1" max="500" placeholder="50" /></div>
+                            <div class="flex items-center gap-4 mt-2">
+                                <button class="btn btn-primary" id="genBtn">Generate</button>
+                                <span id="genMsg" class="text-sm text-muted"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <h3 class="text-lg font-semibold mb-4">Run Evaluation</h3>
+                        <div class="flex flex-col gap-4">
+                            <div><label class="block text-sm font-medium mb-1 text-secondary">Dataset Id</label><input id="runDataset" type="number" /></div>
+                            <div><label class="block text-sm font-medium mb-1 text-secondary">k</label><input id="runK" type="number" value="5" min="1" max="20" /></div>
+                            <div class="flex items-center gap-4 mt-2">
+                                <button class="btn btn-primary" id="runBtn">Run</button>
+                                <span id="runMsg" class="text-sm text-muted"></span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div style="margin-top:10px;"><button class="btn" id="genBtn">Generate</button><span id="genMsg" class="muted" style="margin-left:8px;"></span></div>
-            </div>
-            <div class="panel">
-                <h3>Run Evaluation</h3>
-                <div class="form-grid">
-                    <div><label>Dataset Id</label><input id="runDataset" type="number" /></div>
-                    <div><label>k</label><input id="runK" type="number" value="5" min="1" max="20" /></div>
-                </div>
-                <div style="margin-top:10px;"><button class="btn" id="runBtn">Run</button><span id="runMsg" class="muted" style="margin-left:8px;"></span></div>
-            </div>
-        </div>`;
+            </div>`;
 
         document.getElementById('genBtn').addEventListener('click', async () => {
             const name = document.getElementById('dsName').value.trim();
@@ -1160,9 +864,11 @@
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
                 msg.textContent = 'Dataset created';
+                msg.className = 'text-sm text-success-text';
                 renderEvaluation();
             } catch (err) {
                 msg.textContent = err.message;
+                msg.className = 'text-sm text-error-text';
             }
         });
 
@@ -1179,9 +885,11 @@
                 });
                 if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
                 msg.textContent = 'Run completed';
+                msg.className = 'text-sm text-success-text';
                 renderEvaluation();
             } catch (err) {
                 msg.textContent = err.message;
+                msg.className = 'text-sm text-error-text';
             }
         });
 
@@ -1189,19 +897,21 @@
             const dsRes = await fetch(`${API_BASE}/evaluation/datasets`, { headers: getHeaders() });
             const datasets = dsRes.ok ? await dsRes.json() : [];
             const dsRows = datasets.map(d => `
-                <tr>
-                    <td>${d.id}</td><td>${d.name}</td><td>${d.client_id || '-'}</td><td>${d.sample_size}</td><td>${d.qa_pairs_count}</td><td>${d.run_count || 0}</td>
+                <tr class="border-b border-subtle last:border-0">
+                    <td class="p-3">${d.id}</td><td class="p-3 font-medium">${d.name}</td><td class="p-3 text-muted">${d.client_id || '-'}</td><td class="p-3">${d.sample_size}</td><td class="p-3">${d.qa_pairs_count}</td><td class="p-3">${d.run_count || 0}</td>
                 </tr>
             `).join('');
             document.getElementById('datasetPanel').innerHTML = `
-                <h3>Datasets</h3>
-                <table class="table">
-                    <thead><tr><th>ID</th><th>Name</th><th>Client</th><th>Sample</th><th>Q&A</th><th>Runs</th></tr></thead>
-                    <tbody>${dsRows || '<tr><td colspan="6" class="muted">No datasets</td></tr>'}</tbody>
-                </table>
+                <h3 class="text-lg font-semibold mb-4">Datasets</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead><tr class="bg-element-hover border-b border-subtle"><th class="p-3 font-medium text-secondary">ID</th><th class="p-3 font-medium text-secondary">Name</th><th class="p-3 font-medium text-secondary">Client</th><th class="p-3 font-medium text-secondary">Sample</th><th class="p-3 font-medium text-secondary">Q&A</th><th class="p-3 font-medium text-secondary">Runs</th></tr></thead>
+                        <tbody>${dsRows || '<tr><td colspan="6" class="p-4 text-center text-muted">No datasets</td></tr>'}</tbody>
+                    </table>
+                </div>
             `;
         } catch (err) {
-            document.getElementById('datasetPanel').innerHTML = `<h3>Datasets</h3><div class="muted badge-error">${err.message}</div>`;
+            document.getElementById('datasetPanel').innerHTML = `<div class="text-error-text">${err.message}</div>`;
         }
 
         try {
@@ -1210,26 +920,28 @@
             const runRows = runs.map(r => {
                 const m = r.metrics || {};
                 return `
-                <tr>
-                    <td>${r.id}</td>
-                    <td>${r.dataset_name || r.dataset_id}</td>
-                    <td><span class="chip">${r.status || 'completed'}</span></td>
-                    <td>${m.mean_precision_at_k?.toFixed?.(3) || '-'}</td>
-                    <td>${m.mean_recall_at_k?.toFixed?.(3) || '-'}</td>
-                    <td>${m.mean_mrr?.toFixed?.(3) || '-'}</td>
-                    <td>${m.hit_rate?.toFixed?.(3) || '-'}</td>
-                    <td>${r.created_at ? new Date(r.created_at).toLocaleString() : ''}</td>
+                <tr class="border-b border-subtle last:border-0">
+                    <td class="p-3">${r.id}</td>
+                    <td class="p-3 font-medium">${r.dataset_name || r.dataset_id}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded bg-element-active text-xs">${r.status || 'completed'}</span></td>
+                    <td class="p-3 font-mono text-sm">${m.mean_precision_at_k?.toFixed?.(3) || '-'}</td>
+                    <td class="p-3 font-mono text-sm">${m.mean_recall_at_k?.toFixed?.(3) || '-'}</td>
+                    <td class="p-3 font-mono text-sm">${m.mean_mrr?.toFixed?.(3) || '-'}</td>
+                    <td class="p-3 font-mono text-sm">${m.hit_rate?.toFixed?.(3) || '-'}</td>
+                    <td class="p-3 text-sm text-muted">${r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</td>
                 </tr>
             `}).join('');
             document.getElementById('runPanel').innerHTML = `
-                <h3>Evaluation Runs (${runs.length})</h3>
-                <table class="table">
-                    <thead><tr><th>ID</th><th>Dataset</th><th>Status</th><th>Precision@k</th><th>Recall@k</th><th>MRR</th><th>Hit Rate</th><th>Created</th></tr></thead>
-                    <tbody>${runRows || '<tr><td colspan="8" class="muted">No runs yet</td></tr>'}</tbody>
-                </table>
+                <h3 class="text-lg font-semibold mb-4">Evaluation Runs</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead><tr class="bg-element-hover border-b border-subtle"><th class="p-3 font-medium text-secondary">ID</th><th class="p-3 font-medium text-secondary">Dataset</th><th class="p-3 font-medium text-secondary">Status</th><th class="p-3 font-medium text-secondary">P@k</th><th class="p-3 font-medium text-secondary">R@k</th><th class="p-3 font-medium text-secondary">MRR</th><th class="p-3 font-medium text-secondary">Hit Rate</th><th class="p-3 font-medium text-secondary">Date</th></tr></thead>
+                        <tbody>${runRows || '<tr><td colspan="8" class="p-4 text-center text-muted">No runs yet</td></tr>'}</tbody>
+                    </table>
+                </div>
             `;
         } catch (err) {
-            document.getElementById('runPanel').innerHTML = `<h3>Runs</h3><div class="muted badge-error">${err.message}</div>`;
+            document.getElementById('runPanel').innerHTML = `<div class="text-error-text">${err.message}</div>`;
         }
     }
 
@@ -1237,40 +949,44 @@
     // STATS TAB
     // ============================================================
     async function renderStats() {
-        content.innerHTML = `${renderAdminWarning()}<div class="grid">
-            <div class="panel" id="statPanel"><h3>Key Stats</h3><div class="muted">Loading...</div></div>
-            <div class="panel" id="configPanel"><h3>Config</h3><div class="muted">Loading...</div></div>
-        </div>`;
+        content.innerHTML = `
+            <div class="flex flex-col gap-6">
+                <div class="panel" id="statPanel"><div class="loading-spinner"></div></div>
+                <div class="panel" id="configPanel"><div class="loading-spinner"></div></div>
+            </div>`;
+            
         try {
             const res = await fetch(`${API_BASE}/admin/stats`, { headers: getHeaders() });
             const data = res.ok ? await res.json() : {};
             document.getElementById('statPanel').innerHTML = `
-                <h3>Key Stats</h3>
-                <div class="stat-grid">
-                    <div class="stat"><div class="label">Users</div><div class="value">${data.total_users ?? '-'}</div></div>
-                    <div class="stat"><div class="label">Active Users</div><div class="value">${data.active_users ?? '-'}</div></div>
-                    <div class="stat"><div class="label">Admins</div><div class="value">${data.superusers ?? '-'}</div></div>
-                    <div class="stat"><div class="label">Requests 24h</div><div class="value">${data.total_requests_24h ?? '-'}</div></div>
-                    <div class="stat"><div class="label">Error Rate</div><div class="value">${data.error_rate_24h ?? '-'}%</div></div>
-                    <div class="stat"><div class="label">Avg Latency</div><div class="value">${data.avg_response_time_ms ?? '-'} ms</div></div>
+                <h3 class="text-lg font-semibold mb-4">Key Stats</h3>
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div class="p-4 rounded bg-element border border-subtle"><div class="text-xs font-medium text-secondary uppercase tracking-wider mb-1">Users</div><div class="text-2xl font-bold">${data.total_users ?? '-'}</div></div>
+                    <div class="p-4 rounded bg-element border border-subtle"><div class="text-xs font-medium text-secondary uppercase tracking-wider mb-1">Active</div><div class="text-2xl font-bold">${data.active_users ?? '-'}</div></div>
+                    <div class="p-4 rounded bg-element border border-subtle"><div class="text-xs font-medium text-secondary uppercase tracking-wider mb-1">Admins</div><div class="text-2xl font-bold">${data.superusers ?? '-'}</div></div>
+                    <div class="p-4 rounded bg-element border border-subtle"><div class="text-xs font-medium text-secondary uppercase tracking-wider mb-1">Req (24h)</div><div class="text-2xl font-bold">${data.total_requests_24h ?? '-'}</div></div>
+                    <div class="p-4 rounded bg-element border border-subtle"><div class="text-xs font-medium text-secondary uppercase tracking-wider mb-1">Errors</div><div class="text-2xl font-bold">${data.error_rate_24h ?? '-'}%</div></div>
+                    <div class="p-4 rounded bg-element border border-subtle"><div class="text-xs font-medium text-secondary uppercase tracking-wider mb-1">Latency</div><div class="text-2xl font-bold">${data.avg_response_time_ms ?? '-'} ms</div></div>
                 </div>
             `;
         } catch (err) {
-            document.getElementById('statPanel').innerHTML = `<h3>Key Stats</h3><div class="muted badge-error">${err.message}</div>`;
+            document.getElementById('statPanel').innerHTML = `<div class="text-error-text">${err.message}</div>`;
         }
 
         try {
             const res = await fetch(`${API_BASE}/admin/config`, { headers: getHeaders() });
             const cfg = res.ok ? await res.json() : {};
-            const entries = Object.entries(cfg).map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+            const entries = Object.entries(cfg).map(([k,v]) => `<tr class="border-b border-subtle last:border-0"><td class="p-3 font-mono text-sm text-secondary w-1/3">${k}</td><td class="p-3 font-mono text-sm">${v}</td></tr>`).join('');
             document.getElementById('configPanel').innerHTML = `
-                <h3>Config</h3>
-                <table class="table">
-                    <tbody>${entries || '<tr><td class="muted">No config</td></tr>'}</tbody>
-                </table>
+                <h3 class="text-lg font-semibold mb-4">Configuration</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <tbody>${entries || '<tr><td class="p-4 text-center text-muted">No config</td></tr>'}</tbody>
+                    </table>
+                </div>
             `;
         } catch (err) {
-            document.getElementById('configPanel').innerHTML = `<h3>Config</h3><div class="muted badge-error">${err.message}</div>`;
+            document.getElementById('configPanel').innerHTML = `<div class="text-error-text">${err.message}</div>`;
         }
     }
 
