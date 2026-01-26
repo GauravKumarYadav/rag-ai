@@ -45,7 +45,7 @@
 <body>
     <div id="app" class="app-container hidden">
         <!-- Sidebar Navigation -->
-        <aside class="sidebar">
+        <aside class="sidebar open" id="sidebar">
             <div class="sidebar-header">
                 <div class="flex items-center gap-2 font-semibold">
                     <div class="w-8 h-8 rounded bg-accent-solid text-inverse flex items-center justify-center">
@@ -67,8 +67,11 @@
         <!-- Main Content -->
         <main class="main-content">
             <header class="chat-header">
-                <h3 id="pageTitle">Profile</h3>
-                <div class="flex items-center gap-4">
+                <div class="flex items-center gap-3">
+                    <button class="btn btn-ghost p-1" id="mobileMenuBtn" title="Toggle sidebar"><i class="fas fa-bars"></i></button>
+                    <h3 class="font-semibold text-sm md:text-base truncate max-w-[200px]" id="pageTitle">Profile</h3>
+                </div>
+                <div class="flex items-center gap-2 md:gap-4">
                     <div id="userBadge" class="text-sm font-medium px-3 py-1 rounded-md bg-element border border-subtle"></div>
                     <button onclick="window.location.href='/'" class="btn btn-secondary text-sm">
                         <i class="fas fa-arrow-left"></i> Back to Chat
@@ -106,6 +109,13 @@
     const content = document.getElementById('content');
     const tabsContainer = document.getElementById('tabs');
     const pageTitle = document.getElementById('pageTitle');
+    const sidebar = document.getElementById('sidebar');
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+
+    // Mobile menu toggle
+    mobileMenuBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('open');
+    });
 
     function redirectToLogin() {
         window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
@@ -330,7 +340,8 @@
         try {
             const actRes = await fetch(`${API_BASE}/admin/audit-logs/actions`, { headers: getHeaders() });
             if (actRes.ok) {
-                const actions = await actRes.json();
+                const actionsData = await actRes.json();
+                const actions = actionsData.actions || [];
                 const select = document.getElementById('filterAction');
                 actions.forEach(a => { const opt = document.createElement('option'); opt.value = a; opt.textContent = a; select.appendChild(opt); });
             }
@@ -356,13 +367,14 @@
             const res = await fetch(url, { headers: getHeaders() });
             if (!res.ok) throw new Error('Failed to load logs');
             const data = await res.json();
-            const rows = data.items.map(log => `
+            const logs = data.logs || [];
+            const rows = logs.map(log => `
                 <tr class="border-b border-subtle last:border-0 hover:bg-element-hover">
                     <td class="p-3">${log.username || '-'}</td>
                     <td class="p-3"><span class="px-2 py-0.5 rounded bg-element-active text-xs font-mono">${log.action}</span></td>
                     <td class="p-3 text-sm font-mono text-muted">${log.method || ''} ${log.path || ''}</td>
                     <td class="p-3"><span class="${log.status_code >= 400 ? 'text-error-text' : 'text-success-text'}">${log.status_code || ''}</span></td>
-                    <td class="p-3 text-sm text-muted">${log.duration_ms ? log.duration_ms.toFixed(0) + 'ms' : '-'}</td>
+                    <td class="p-3 text-sm text-muted">-</td>
                     <td class="p-3 text-sm text-muted">${new Date(log.timestamp).toLocaleString()}</td>
                 </tr>
             `).join('');
@@ -485,7 +497,8 @@
             const res = await fetch(`${API_BASE}/admin/users?limit=100`, { headers: getHeaders() });
             if (!res.ok) throw new Error('Failed to load users');
             const data = await res.json();
-            const rows = data.map(u => `
+            const users = data.users || [];
+            const rows = users.map(u => `
                 <tr class="border-b border-subtle last:border-0 hover:bg-element-hover" data-user='${JSON.stringify(u).replace(/'/g, "&#39;")}'>
                     <td class="p-3 font-medium">${u.username}</td>
                     <td class="p-3 text-muted">${u.email || '-'}</td>
@@ -496,7 +509,7 @@
                 </tr>
             `).join('');
             document.getElementById('userList').innerHTML = `
-                <h3 class="text-lg font-semibold mb-4">Users (${data.length})</h3>
+                <h3 class="text-lg font-semibold mb-4">Users (${users.length})</h3>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead><tr class="bg-element-hover border-b border-subtle"><th class="p-3 font-medium text-secondary">Username</th><th class="p-3 font-medium text-secondary">Email</th><th class="p-3 font-medium text-secondary">Role</th><th class="p-3 font-medium text-secondary">Status</th><th class="p-3 font-medium text-secondary">Created</th><th class="p-3 font-medium text-secondary">Actions</th></tr></thead>
@@ -611,7 +624,8 @@
         try {
             const res = await fetch(`${API_BASE}/admin/users?limit=200`, { headers: getHeaders() });
             if (res.ok) {
-                allUsers = await res.json();
+                const data = await res.json();
+                allUsers = data.users || [];
                 const userSelect = document.getElementById('accessUserSelect');
                 if (userSelect) {
                     userSelect.innerHTML = '<option value="">-- Select a user --</option>';
@@ -895,7 +909,8 @@
 
         try {
             const dsRes = await fetch(`${API_BASE}/evaluation/datasets`, { headers: getHeaders() });
-            const datasets = dsRes.ok ? await dsRes.json() : [];
+            const dsData = dsRes.ok ? await dsRes.json() : { datasets: [] };
+            const datasets = dsData.datasets || [];
             const dsRows = datasets.map(d => `
                 <tr class="border-b border-subtle last:border-0">
                     <td class="p-3">${d.id}</td><td class="p-3 font-medium">${d.name}</td><td class="p-3 text-muted">${d.client_id || '-'}</td><td class="p-3">${d.sample_size}</td><td class="p-3">${d.qa_pairs_count}</td><td class="p-3">${d.run_count || 0}</td>
@@ -916,7 +931,8 @@
 
         try {
             const runRes = await fetch(`${API_BASE}/evaluation/runs`, { headers: getHeaders() });
-            const runs = runRes.ok ? await runRes.json() : [];
+            const runData = runRes.ok ? await runRes.json() : { runs: [] };
+            const runs = runData.runs || [];
             const runRows = runs.map(r => {
                 const m = r.metrics || {};
                 return `

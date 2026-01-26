@@ -12,7 +12,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - rag-redis-data:/data
+      - ./data/redis:/data
     command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
     restart: unless-stopped
     healthcheck:
@@ -28,7 +28,7 @@ services:
     ports:
       - "8020:8000"
     volumes:
-      - rag-chroma-data:/chroma/chroma
+      - ./data/chroma:/chroma/chroma
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
@@ -123,15 +123,6 @@ services:
       chat-api:
         condition: service_started
     restart: unless-stopped
-
-# ===========================================
-# PERSISTENT VOLUMES (CI/CD Safe)
-# ===========================================
-volumes:
-  rag-redis-data:
-    name: rag-redis-data
-  rag-chroma-data:
-    name: rag-chroma-data
 
 # ===========================================
 # NETWORK

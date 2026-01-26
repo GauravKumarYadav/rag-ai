@@ -12,12 +12,22 @@
 - Intent is LLM-classified (no hardcoded patterns). If you ask “what documents do I have?” you’ll get a list; “what does my document say?” will retrieve content.
 
 ## ChromaDB Issues
-- Data path: `./data/chroma` (mounted in compose). Ensure writable: `chmod -R 755 data/chroma`.
+- Data path: `./data/chroma` (bind mount, persists across restarts). Ensure writable: `chmod -R 755 data/chroma`.
 - Health: check container logs: `podman-compose logs -f chromadb`.
 
 ## Redis / Memory
+- Data path: `./data/redis` (bind mount, persists across restarts).
 - Redis stores session/memory; if unavailable, conversations may not persist.
 - Health: `podman-compose logs -f redis`.
+
+## Data Persistence
+All data directories use bind mounts and persist across container restarts:
+- ChromaDB: `./data/chroma`
+- Redis: `./data/redis`
+- BM25 index: `./data/bm25`
+- Knowledge graphs: `./data/knowledge_graphs`
+
+Running `podman-compose down -v` will NOT delete your data (bind mounts are not affected).
 
 ## Auth Errors
 - Ensure `JWT_SECRET_KEY` is set.

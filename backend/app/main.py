@@ -26,6 +26,7 @@ from app.api.routes import (
     clients,
     conversations,
     documents,
+    evaluation,
     health,
     models,
     status,
@@ -133,6 +134,7 @@ app.include_router(documents.router, prefix="/documents", tags=["documents"])
 app.include_router(conversations.router, prefix="/conversations", tags=["conversations"])
 app.include_router(clients.router, prefix="/clients", tags=["clients"])
 app.include_router(models.router, prefix="/models", tags=["models"])
+app.include_router(evaluation.router, prefix="/evaluation", tags=["evaluation"])
 app.include_router(websocket.router, prefix="/chat", tags=["websocket"])
 
 # Serve frontend static files

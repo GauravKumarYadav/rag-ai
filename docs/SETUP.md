@@ -77,7 +77,16 @@ Serve `frontend/index.html` via any static server (or use the bundled nginx from
 - No MySQL, no monitoring stack, no background workers. Upload is synchronous: text extraction → chunking → embeddings → Chroma. Data is available immediately after the upload response.
 - Client isolation: pass `client_id` on every `/chat` and `/documents/upload` request. The agent uses only that client's collection plus global. No query-based client detection.
 
+## Data Persistence
+Data directories use bind mounts and persist across container restarts:
+- ChromaDB: `./data/chroma`
+- Redis: `./data/redis`
+- BM25 index: `./data/bm25`
+- Knowledge graphs: `./data/knowledge_graphs`
+
+> Running `podman-compose down -v` will NOT delete your data (bind mounts are not affected by the -v flag).
+
 ## Troubleshooting Quick Checks
 - LM Studio unreachable from containers: use `host.containers.internal` instead of `127.0.0.1`
 - Empty answers: ensure the correct `client_id` is set and documents are uploaded; intent is now LLM-classified (no hardcoded patterns)
-- Chroma data path: `./data/chroma` (mounted in compose)
+- Data paths: `./data/chroma`, `./data/redis`, `./data/bm25`, `./data/knowledge_graphs` (bind mounts in compose)

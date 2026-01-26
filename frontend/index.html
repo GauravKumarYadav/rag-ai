@@ -79,30 +79,53 @@
             <!-- Chat Area -->
             <div class="chat-messages" id="chatMessages">
                 <!-- Welcome State -->
-                <div class="flex flex-col items-center justify-center h-full text-center p-8" id="welcomeState">
+                <div class="flex flex-col items-center justify-center h-full p-8" id="welcomeState">
                     <div class="w-16 h-16 rounded-2xl bg-element border border-subtle flex items-center justify-center text-3xl text-primary mb-6 shadow-sm">
-                        <i class="fas fa-comments"></i>
+                        <i class="fas fa-robot"></i>
                     </div>
-                    <h2 class="text-2xl font-bold mb-2">How can I help you?</h2>
-                    <p class="text-secondary max-w-md mb-8">I'm your AI assistant with access to your knowledge base. Ask me anything about your documents or general topics.</p>
+                    <h2 class="text-2xl font-bold mb-4 text-center">Your AI-Powered Knowledge Assistant</h2>
                     
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
-                        <button class="p-4 rounded-lg border border-subtle bg-element hover:bg-element-hover hover:border-border-focus transition-all text-left group" onclick="useSuggestion('Explain a complex topic')">
-                            <div class="font-medium mb-1 group-hover:text-primary">Explain a concept</div>
-                            <div class="text-sm text-secondary">Break down complex topics</div>
-                        </button>
-                        <button class="p-4 rounded-lg border border-subtle bg-element hover:bg-element-hover hover:border-border-focus transition-all text-left group" onclick="useSuggestion('Help me analyze some data')">
-                            <div class="font-medium mb-1 group-hover:text-primary">Analyze data</div>
-                            <div class="text-sm text-secondary">Get insights from documents</div>
-                        </button>
-                        <button class="p-4 rounded-lg border border-subtle bg-element hover:bg-element-hover hover:border-border-focus transition-all text-left group" onclick="useSuggestion('Write a summary of')">
-                            <div class="font-medium mb-1 group-hover:text-primary">Summarize</div>
-                            <div class="text-sm text-secondary">Concise summaries of content</div>
-                        </button>
-                        <button class="p-4 rounded-lg border border-subtle bg-element hover:bg-element-hover hover:border-border-focus transition-all text-left group" onclick="useSuggestion('Help me troubleshoot')">
-                            <div class="font-medium mb-1 group-hover:text-primary">Troubleshoot</div>
-                            <div class="text-sm text-secondary">Debug issues and find solutions</div>
-                        </button>
+                    <div class="max-w-2xl w-full">
+                        <p class="text-secondary mb-6 text-center">Upload documents for any client and instantly query their information. Here's what you can do:</p>
+                        
+                        <div class="bg-element border border-subtle rounded-xl p-6 mb-6">
+                            <h3 class="font-semibold text-primary mb-4 flex items-center gap-2">
+                                <i class="fas fa-briefcase"></i> Business Use Cases
+                            </h3>
+                            <ul class="space-y-3 text-sm">
+                                <li class="flex items-start gap-3">
+                                    <i class="fas fa-check-circle text-accent-solid mt-0.5"></i>
+                                    <span><strong>Client Document Management</strong> — Upload and organize documents per client for quick retrieval</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <i class="fas fa-check-circle text-accent-solid mt-0.5"></i>
+                                    <span><strong>Instant Information Lookup</strong> — Ask questions about any uploaded document and get accurate answers</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <i class="fas fa-check-circle text-accent-solid mt-0.5"></i>
+                                    <span><strong>Cross-Document Analysis</strong> — Compare information across multiple documents within a client context</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <i class="fas fa-check-circle text-accent-solid mt-0.5"></i>
+                                    <span><strong>Compliance & Audit Support</strong> — Quickly find specific clauses, terms, or data points from contracts and legal documents</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <i class="fas fa-check-circle text-accent-solid mt-0.5"></i>
+                                    <span><strong>Knowledge Extraction</strong> — Extract key insights, summaries, or specific data from PDFs, docs, and text files</span>
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <div class="bg-element border border-subtle rounded-xl p-6">
+                            <h3 class="font-semibold text-primary mb-4 flex items-center gap-2">
+                                <i class="fas fa-lightbulb"></i> How to Use
+                            </h3>
+                            <ol class="space-y-3 text-sm list-decimal list-inside">
+                                <li><strong>Select a Client</strong> — Choose or create a client from the dropdown above</li>
+                                <li><strong>Upload Documents</strong> — Use the Knowledge Base panel to upload relevant files</li>
+                                <li><strong>Ask Questions</strong> — Type your query below to get AI-powered answers from your documents</li>
+                            </ol>
+                        </div>
                     </div>
                 </div>
 
@@ -164,7 +187,7 @@
 
         <div class="flex-1 overflow-y-auto p-4">
             <div class="border-2 border-dashed border-border-subtle rounded-lg p-6 text-center hover:border-accent-solid hover:bg-element-hover transition-all cursor-pointer mb-6" id="uploadZone">
-                <i class="fas fa-cloud-upload-alt text-2xl text-secondary mb-2"></i>
+                <i class="fas fa-cloud-upload-alt text-2xl text-secondary mb-2" id="uploadIcon"></i>
                 <p class="text-sm font-medium" id="uploadText">Drag & drop files</p>
                 <p class="text-xs text-secondary mt-1" id="uploadHint">or click to browse</p>
                 <input type="file" id="fileInput" hidden multiple accept=".pdf,.txt,.md,.doc,.docx,.png,.jpg,.jpeg">
@@ -186,7 +209,7 @@
                 </div>
             </div>
 
-            <div class="text-xs font-medium text-secondary uppercase tracking-wider mb-3">Uploaded Documents</div>
+            <div class="text-xs font-medium text-secondary uppercase tracking-wider mb-3">Uploaded Documents <span id="docsClientName" class="text-primary font-semibold"></span></div>
             <div class="flex flex-col gap-2" id="documentList">
                 <!-- Documents injected -->
             </div>
@@ -383,6 +406,16 @@
             icon.className = 'fas fa-cloud-upload-alt text-2xl text-secondary mb-2';
             uploadText.textContent = 'Drag & drop files';
             hint.style.display = 'block';
+        }
+
+        function showSectionLoading(element) {
+            if (element) {
+                element.innerHTML = `
+                    <div class="text-center p-4 text-secondary text-xs">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading...
+                    </div>
+                `;
+            }
         }
 
         function formatFileSize(bytes) {
@@ -865,6 +898,14 @@
         // ============================================================
         async function loadDocuments() {
             showSectionLoading(documentList);
+            
+            // Show which client's documents we're viewing
+            const clientNameEl = document.getElementById('docsClientName');
+            const selectedClient = clients.find(c => c.id === currentClientId);
+            if (clientNameEl) {
+                clientNameEl.textContent = selectedClient ? `(${selectedClient.name})` : '';
+            }
+            
             try {
                 let url = `${API_BASE}/documents`;
                 if (currentClientId) {
@@ -961,6 +1002,7 @@
                 }
             }
             hideUploadProgress();
+            fileInput.value = '';  // Reset file input for re-upload
             loadDocuments();
         }
 
@@ -1024,6 +1066,13 @@
             const select = document.getElementById('clientSelect');
             select.innerHTML = '';
             
+            // Check if stored client_id exists in current clients list
+            const storedClientExists = clients.some(c => c.id === currentClientId);
+            if (currentClientId && !storedClientExists) {
+                currentClientId = ''; // Reset if stored client doesn't exist
+                localStorage.removeItem('current_client_id');
+            }
+            
             clients.forEach((client, index) => {
                 const option = document.createElement('option');
                 option.value = client.id;
@@ -1044,6 +1093,13 @@
             if (!select) return;
             
             select.innerHTML = '';
+            
+            // Check if stored client_id exists in current clients list
+            const storedClientExists = clients.some(c => c.id === currentClientId);
+            if (currentClientId && !storedClientExists) {
+                currentClientId = ''; // Reset if stored client doesn't exist
+                localStorage.removeItem('current_client_id');
+            }
             
             clients.forEach((client, index) => {
                 const option = document.createElement('option');
@@ -1135,6 +1191,11 @@
 
         docsBtn.addEventListener('click', () => {
             documentsPanel.classList.add('open');
+            // Sync dropdown with currentClientId
+            const clientSelect = document.getElementById('clientSelect');
+            if (clientSelect && currentClientId) {
+                clientSelect.value = currentClientId;
+            }
             loadDocuments();
         });
 
@@ -1275,7 +1336,26 @@
             
             await loadConversations();
             await loadClients();
+            await loadDocuments();
         }
+
+        // ============================================================
+        // Periodic Backend Health Check (every 2 minutes)
+        // ============================================================
+        async function checkBackendHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`, {
+                    method: 'GET',
+                    headers: getAuthHeaders()
+                });
+                updateConnectionStatus(response.ok);
+            } catch (error) {
+                updateConnectionStatus(false);
+            }
+        }
+
+        // Check backend health every 2 minutes (120000ms)
+        setInterval(checkBackendHealth, 120000);
 
         checkAuth();
     </script>

@@ -299,10 +299,9 @@ async def list_documents(
 ):
     """List all uploaded documents with metadata."""
     try:
-        if client_id:
-            store = get_client_vector_store(client_id)
-        else:
-            store = get_vector_store()
+        # Use GLOBAL_CLIENT_ID when no client_id specified (consistent with upload)
+        actual_client_id = client_id if client_id else GLOBAL_CLIENT_ID
+        store = get_client_vector_store(actual_client_id)
         
         # Get all documents from the store
         all_docs = store.docs.get(include=["metadatas"])
@@ -393,25 +392,25 @@ async def delete_document(
     
     total_deleted = 0
     
-    # If client_id specified, only search that client's store
-    if client_id:
-        store = get_client_vector_store(client_id)
-        total_deleted = find_and_delete_in_store(store, document_id)
-    else:
-        # Try global store first
-        store = get_vector_store()
-        total_deleted = find_and_delete_in_store(store, document_id)
-        
-        # If not found in global, search all client stores
-        if total_deleted == 0:
-            client_store = get_client_store()
-            all_clients = await client_store.list_all()
-            for client in all_clients:
-                client_vs = get_client_vector_store(client.id)
-                deleted = find_and_delete_in_store(client_vs, document_id)
-                if deleted > 0:
-                    total_deleted = deleted
-                    break  # Found and deleted
+    # Use GLOBAL_CLIENT_ID when no client_id specified (consistent with upload/list)
+    actual_client_id = client_id if client_id else GLOBAL_CLIENT_ID
+    
+    # Search the specified (or global) client's store
+    store = get_client_vector_store(actual_client_id)
+    total_deleted = find_and_delete_in_store(store, document_id)
+    
+    # If not found and searching global, also check other client stores
+    if total_deleted == 0 and not client_id:
+        client_store = get_client_store()
+        all_clients = await client_store.list_all()
+        for client in all_clients:
+            if client.id == GLOBAL_CLIENT_ID:
+                continue  # Already checked
+            client_vs = get_client_vector_store(client.id)
+            deleted = find_and_delete_in_store(client_vs, document_id)
+            if deleted > 0:
+                total_deleted = deleted
+                break  # Found and deleted
     
     if total_deleted > 0:
         return {"message": f"Deleted {total_deleted} chunks", "deleted_count": total_deleted}
