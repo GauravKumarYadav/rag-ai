@@ -20,6 +20,7 @@ from langsmith import traceable
 
 from app.config import settings
 from app.memory.session_buffer import SessionBuffer, get_session_buffer
+from app.core.cost_tracker import get_cost_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ class ConversationSummarizer:
     """
     
     def __init__(self) -> None:
+        self.cost_tracker = get_cost_tracker()
         self.llm = ChatOpenAI(
             base_url=settings.llm.lmstudio.base_url,
             model=settings.llm.lmstudio.model,
@@ -56,6 +58,7 @@ class ConversationSummarizer:
             temperature=0.3,  # Low temperature for factual summaries
             max_tokens=settings.memory.summary_target_tokens,
             timeout=settings.llm.timeout,
+            callbacks=[self.cost_tracker],
         )
         self.max_context_tokens = settings.memory.max_context_tokens
         self.summary_target_tokens = settings.memory.summary_target_tokens

@@ -19,6 +19,7 @@ from langsmith import traceable
 
 from app.config import settings
 from app.agents.state import AgentState
+from app.core.cost_tracker import get_cost_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ class QueryAgent:
     """
     
     def __init__(self) -> None:
+        self.cost_tracker = get_cost_tracker()
         self.llm = ChatOpenAI(
             base_url=settings.llm.lmstudio.base_url,
             model=settings.llm.lmstudio.model,
@@ -82,6 +84,7 @@ class QueryAgent:
             temperature=0.1,  # Low temperature for classification
             max_tokens=256,
             timeout=settings.llm.timeout,
+            callbacks=[self.cost_tracker],
         )
     
     @traceable(name="query_agent.process")

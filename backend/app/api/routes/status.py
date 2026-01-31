@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.rag.vector_store import get_vector_store
 from app.config import settings
+from app.core.cost_tracker import get_session_cost_summary
 
 router = APIRouter()
 
@@ -37,12 +38,22 @@ async def system_status() -> dict:
     
     model, provider = get_current_model_info()
     
+    # Get cost tracking summary
+    cost_summary = get_session_cost_summary()
+    
     return {
         "status": "ok",
         "model": model,
         "documents_indexed": doc_count,
         "memories_indexed": memory_count,
         "provider": provider,
+        "cost_tracking": {
+            "total_tokens": cost_summary["total_tokens"],
+            "equivalent_cost_usd": cost_summary["equivalent_cost_usd"],
+            "savings_usd": cost_summary["savings_usd"],
+            "comparison_model": cost_summary["comparison_model"],
+            "requests_count": cost_summary["requests_count"],
+        },
     }
 
 

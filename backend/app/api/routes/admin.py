@@ -13,6 +13,7 @@ from app.auth.dependencies import require_superuser
 from app.auth.users import list_all_users, create_user, update_user, get_user_by_id
 from app.config import settings
 from app.core.logging import get_logger
+from app.core.cost_tracker import get_session_cost_summary, get_cost_tracker
 
 
 router = APIRouter()
@@ -48,6 +49,42 @@ async def get_config(current_user: dict = Depends(require_superuser)):
         reranker_enabled=settings.rag.reranker_enabled,
         log_level=settings.logging.level,
     )
+
+
+class CostSummaryResponse(BaseModel):
+    """Cost tracking summary response."""
+    total_input_tokens: int
+    total_output_tokens: int
+    total_tokens: int
+    equivalent_cost_usd: float
+    savings_usd: float
+    model_used: str
+    comparison_model: str
+    requests_count: int
+
+
+@router.get("/costs", response_model=CostSummaryResponse)
+async def get_cost_summary(current_user: dict = Depends(require_superuser)):
+    """
+    Get LLM usage cost summary.
+    
+    Returns token usage and equivalent OpenAI API costs.
+    Since we're using a local LM Studio model, the actual cost is $0,
+    but this shows what you would have paid using OpenAI's API.
+    """
+    return CostSummaryResponse(**get_session_cost_summary())
+
+
+@router.post("/costs/reset")
+async def reset_cost_tracking(current_user: dict = Depends(require_superuser)):
+    """
+    Reset the cost tracking counters.
+    
+    Use this to start tracking costs from scratch.
+    """
+    tracker = get_cost_tracker()
+    tracker.reset()
+    return {"message": "Cost tracking reset successfully"}
 
 
 @router.get("/health")

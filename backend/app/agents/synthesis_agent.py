@@ -17,6 +17,7 @@ from langsmith import traceable
 from app.config import settings
 from app.agents.state import AgentState
 from app.models.schemas import RetrievalHit
+from app.core.cost_tracker import get_cost_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class SynthesisAgent:
     """
     
     def __init__(self) -> None:
+        self.cost_tracker = get_cost_tracker()
         self.llm = ChatOpenAI(
             base_url=settings.llm.lmstudio.base_url,
             model=settings.llm.lmstudio.model,
@@ -69,6 +71,7 @@ class SynthesisAgent:
             temperature=settings.llm.temperature,
             max_tokens=settings.llm.max_tokens,
             timeout=settings.llm.timeout,
+            callbacks=[self.cost_tracker],
         )
     
     @traceable(name="synthesis_agent.process")

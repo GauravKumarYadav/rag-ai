@@ -78,15 +78,15 @@ Serve `frontend/index.html` via any static server (or use the bundled nginx from
 - Client isolation: pass `client_id` on every `/chat` and `/documents/upload` request. The agent uses only that client's collection plus global. No query-based client detection.
 
 ## Data Persistence
-Data directories use bind mounts and persist across container restarts:
-- ChromaDB: `./data/chroma`
-- Redis: `./data/redis`
-- BM25 index: `./data/bm25`
-- Knowledge graphs: `./data/knowledge_graphs`
+ChromaDB, Redis, and BM25 use **named volumes** so data survives `podman compose down`:
+- ChromaDB: volume `rag-chroma-data`
+- Redis: volume `rag-redis-data`
+- BM25 index: volume `rag-bm25-data`
+- Ingested files (raw): bind mount `./data/raw` (create this folder to add documents from the host)
 
-> Running `podman-compose down -v` will NOT delete your data (bind mounts are not affected by the -v flag).
+**Important:** Use `podman compose down` when stopping. Do **not** use `podman compose down -v` unless you intend to **delete all stored chunks, vectors, and session data**; the `-v` flag removes named volumes.
 
 ## Troubleshooting Quick Checks
 - LM Studio unreachable from containers: use `host.containers.internal` instead of `127.0.0.1`
 - Empty answers: ensure the correct `client_id` is set and documents are uploaded; intent is now LLM-classified (no hardcoded patterns)
-- Data paths: `./data/chroma`, `./data/redis`, `./data/bm25`, `./data/knowledge_graphs` (bind mounts in compose)
+- Data: Chroma/Redis/BM25 use named volumes (survive `compose down`); only `./data/raw` is a bind mount for ingest

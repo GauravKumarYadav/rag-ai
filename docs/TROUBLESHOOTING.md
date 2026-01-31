@@ -12,22 +12,22 @@
 - Intent is LLM-classified (no hardcoded patterns). If you ask “what documents do I have?” you’ll get a list; “what does my document say?” will retrieve content.
 
 ## ChromaDB Issues
-- Data path: `./data/chroma` (bind mount, persists across restarts). Ensure writable: `chmod -R 755 data/chroma`.
-- Health: check container logs: `podman-compose logs -f chromadb`.
+- ChromaDB data is in named volume `rag-chroma-data` (persists across `compose down`).
+- Health: check container logs: `podman compose logs -f chromadb`.
 
 ## Redis / Memory
-- Data path: `./data/redis` (bind mount, persists across restarts).
+- Redis data is in named volume `rag-redis-data` (persists across `compose down`).
 - Redis stores session/memory; if unavailable, conversations may not persist.
-- Health: `podman-compose logs -f redis`.
+- Health: `podman compose logs -f redis`.
 
 ## Data Persistence
-All data directories use bind mounts and persist across container restarts:
-- ChromaDB: `./data/chroma`
-- Redis: `./data/redis`
-- BM25 index: `./data/bm25`
-- Knowledge graphs: `./data/knowledge_graphs`
+ChromaDB, Redis, and BM25 use **named volumes** and survive `podman compose down`:
+- ChromaDB: volume `rag-chroma-data`
+- Redis: volume `rag-redis-data`
+- BM25 index: volume `rag-bm25-data`
+- Ingested files: bind mount `./data/raw` (create this folder on the host)
 
-Running `podman-compose down -v` will NOT delete your data (bind mounts are not affected).
+**Do not run `podman compose down -v`** unless you want to **delete all chunks, vectors, and session data**; `-v` removes these named volumes. To backup a volume: `podman run --rm -v rag-chroma-data:/data -v $(pwd):/backup alpine tar czf /backup/chroma-backup.tar.gz -C /data .`
 
 ## Auth Errors
 - Ensure `JWT_SECRET_KEY` is set.

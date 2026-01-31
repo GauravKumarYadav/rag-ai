@@ -128,6 +128,10 @@ class AgentSettings(BaseModel):
     # LangSmith tracing
     langsmith_tracing: bool = True
     langsmith_project: str = "agentic-rag"
+    
+    # Cost tracking - compare against OpenAI pricing
+    cost_tracking_enabled: bool = True
+    cost_comparison_model: str = "gpt-4o-mini"  # Model to compare costs against
 
 
 class SessionSettings(BaseModel):

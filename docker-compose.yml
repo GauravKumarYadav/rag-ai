@@ -10,9 +10,9 @@ services:
     image: redis:7-alpine
     container_name: rag-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"   # host:container — use 6380 on host if 6379 is in use; Redis still listens on 6379 inside
     volumes:
-      - ./data/redis:/data
+      - rag-redis-data:/data
     command: redis-server --appendonly yes --maxmemory 1gb --maxmemory-policy allkeys-lru
     restart: unless-stopped
     healthcheck:
@@ -28,7 +28,7 @@ services:
     ports:
       - "8020:8000"
     volumes:
-      - ./data/chroma:/chroma/chroma
+      - rag-chroma-data:/chroma/chroma
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
@@ -93,7 +93,7 @@ services:
       - SERVER__HOST=0.0.0.0
       - SERVER__PORT=8000
     volumes:
-      - ./data/bm25:/app/data/bm25
+      - rag-bm25-data:/app/data/bm25
       - ./data/raw:/app/data/raw:ro
     depends_on:
       redis:
@@ -115,7 +115,7 @@ services:
     image: nginx:alpine
     container_name: rag-nginx
     ports:
-      - "80:80"
+      - "81:80"   # host:container — nginx listens on 80 inside container
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
@@ -125,8 +125,14 @@ services:
     restart: unless-stopped
 
 # ===========================================
-# NETWORK
+# NETWORKS & VOLUMES (persist across compose down)
 # ===========================================
 networks:
   default:
     name: rag-network
+
+# Named volumes: data survives `compose down`. Use `compose down -v` only to wipe data.
+volumes:
+  rag-redis-data:
+  rag-chroma-data:
+  rag-bm25-data:
