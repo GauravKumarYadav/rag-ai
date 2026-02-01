@@ -6,8 +6,12 @@ This agent is responsible for:
 2. Searching the global collection
 3. Merging and deduplicating results
 4. Reranking combined results
+
+Hybrid search (BM25 + reranker) runs under a semaphore and in a thread pool
+so concurrent users do not saturate CPU; accuracy is unchanged.
 """
 
+import asyncio
 import logging
 from typing import List, Optional
 
@@ -17,6 +21,7 @@ from app.config import settings
 from app.agents.state import AgentState
 from app.models.schemas import RetrievalHit
 from app.rag.hybrid_search import get_hybrid_search
+from app.rag.reranker import get_reranker_semaphore
 from app.rag.retriever import get_retriever
 
 logger = logging.getLogger(__name__)
@@ -126,14 +131,19 @@ class RetrievalAgent:
         """
         try:
             if self.use_bm25:
-                # Use hybrid search (BM25 + vector)
+                # Use hybrid search (BM25 + vector); limit concurrent reranker runs
                 hybrid = get_hybrid_search(client_id=client_id)
-                return hybrid.search(
-                    query=query,
-                    top_k=self.top_k,
-                    fetch_k=self.fetch_k,
-                    use_reranker=self.use_reranker,
-                )
+                loop = asyncio.get_event_loop()
+                async with get_reranker_semaphore():
+                    return await loop.run_in_executor(
+                        None,
+                        lambda: hybrid.search(
+                            query=query,
+                            top_k=self.top_k,
+                            fetch_k=self.fetch_k,
+                            use_reranker=self.use_reranker,
+                        ),
+                    )
             else:
                 # Use vector-only search
                 retriever = get_retriever()

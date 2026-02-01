@@ -34,6 +34,9 @@ services:
       - ANONYMIZED_TELEMETRY=FALSE
       - ALLOW_RESET=TRUE
     restart: unless-stopped
+    # Resource limits so one service does not starve the host
+    mem_limit: 2g
+    cpus: '1'
     # ChromaDB doesn't have curl, use wget or just skip health check
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/v1/heartbeat\")' || exit 1"]
@@ -103,6 +106,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+    # Resource limits so chat-api does not starve the host (4-core machine)
+    mem_limit: 4g
+    cpus: '3'
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

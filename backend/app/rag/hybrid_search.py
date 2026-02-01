@@ -144,11 +144,15 @@ class HybridSearch:
         )
         logger.debug(f"Vector search for client {self.client_id} returned {len(vector_hits)} candidates")
         
-        # 2. Get candidates from BM25 search (client-scoped)
+        # 2. Get candidates from BM25 search (client-scoped); resolve content from Chroma when not on disk
+        content_resolver = None
+        if hasattr(self.vector_store, "get_documents_by_ids"):
+            content_resolver = lambda ids: self.vector_store.get_documents_by_ids(ids)
         bm25_hits = self.bm25_index.search(
             query=query,
             top_k=fetch_k,
             where=where,
+            content_resolver=content_resolver,
         )
         logger.debug(f"BM25 search for client {self.client_id} returned {len(bm25_hits)} candidates")
         

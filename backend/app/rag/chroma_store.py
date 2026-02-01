@@ -383,7 +383,30 @@ class ChromaClientVectorStore(ClientVectorStoreBase):
         
         count_after = target.count()
         return count_before - count_after
-    
+
+    def get_documents_by_ids(self, ids: List[str]) -> Dict[str, str]:
+        """Get document contents by IDs (for BM25 content resolution from Chroma)."""
+        if not ids:
+            return {}
+        try:
+            result = self.docs.get(ids=ids, include=["documents"])
+            chroma_ids = result.get("ids", [])
+            docs = result.get("documents", [])
+            # Chroma may return documents as list of lists (one per id)
+            out = {}
+            for i, doc_id in enumerate(chroma_ids):
+                if i < len(docs):
+                    content = docs[i]
+                    if isinstance(content, list):
+                        content = content[0] if content else ""
+                    out[doc_id] = content or ""
+                else:
+                    out[doc_id] = ""
+            return out
+        except Exception as e:
+            logger.debug("get_documents_by_ids failed: %s", e)
+            return {}
+
     def get_stats(self) -> Dict[str, Any]:
         return {
             "provider": "chromadb",
@@ -541,6 +564,28 @@ class GlobalVectorStore:
         if embeddings:
             kwargs["embeddings"] = embeddings
         self.docs.add(**kwargs)
+
+    def get_documents_by_ids(self, ids: List[str]) -> Dict[str, str]:
+        """Get document contents by IDs (for BM25 content resolution from Chroma)."""
+        if not ids:
+            return {}
+        try:
+            result = self.docs.get(ids=ids, include=["documents"])
+            chroma_ids = result.get("ids", [])
+            docs = result.get("documents", [])
+            out = {}
+            for i, doc_id in enumerate(chroma_ids):
+                if i < len(docs):
+                    content = docs[i]
+                    if isinstance(content, list):
+                        content = content[0] if content else ""
+                    out[doc_id] = content or ""
+                else:
+                    out[doc_id] = ""
+            return out
+        except Exception as e:
+            logger.debug("get_documents_by_ids failed: %s", e)
+            return {}
     
     def query(
         self,

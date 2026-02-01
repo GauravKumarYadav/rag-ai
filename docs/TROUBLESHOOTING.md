@@ -46,3 +46,53 @@ curl http://localhost/health
 podman-compose ps
 podman-compose logs -f chat-api
 ```
+
+## Resource Baseline (CPU, Memory, Volumes)
+
+To measure container CPU, memory, and volume usage (e.g. before/after optimization):
+
+1. **Run the baseline script** from the repo root:
+   ```bash
+   chmod +x scripts/baseline_resources.sh
+   ./scripts/baseline_resources.sh
+   ```
+
+2. **Manual commands** (if not using Docker):
+   - Disk usage: `docker system df -v` (or `podman system df -v`)
+   - Live container stats: `docker stats --no-stream` (or `podman stats --no-stream`)
+   - Volume inspect: `docker volume inspect rag-chroma-data rag-bm25-data rag-redis-data`
+
+3. **Interpretation**: Named volumes `rag-chroma-data`, `rag-bm25-data`, and `rag-redis-data` plus the `chat-api` image and build cache account for most disk. High CPU under load usually comes from the reranker and Docling running in the same process; see docs for concurrency and resource limits.
+
+## Docker build cache and image size
+
+To reduce disk used by Docker images and build cache:
+
+1. **Prune build cache** (reclaim space; next build will be slower until cache repopulates):
+   ```bash
+   docker builder prune -f
+   # or: podman buildah prune -f
+   ```
+
+2. **Prune unused images and containers**:
+   ```bash
+   docker system prune -a
+   # or: podman system prune -a
+   ```
+   Use with care; this removes all unused images and stopped containers.
+
+3. **chat-api image**: The backend uses a multi-stage Dockerfile so the final image does not include build tools (gcc, build-essential), which keeps the runtime image smaller.
+
+## Pruning and retention (Chroma, Redis, BM25)
+
+To cap volume growth or remove old/unused data (optional; does not change retrieval for active data):
+
+1. **ChromaDB** (`rag-chroma-data`): Data lives in the Chroma container. To shrink:
+   - Delete specific collections via the Chroma HTTP API or by reinitializing the store (see Chroma docs).
+   - To wipe and start fresh: `docker compose down -v` removes named volumes (including Chroma); only do this if you are okay losing all vectors and documents.
+
+2. **Redis** (`rag-redis-data`): Redis is already capped in memory (`--maxmemory 1gb` in docker-compose). On-disk AOF can be compacted by restarting Redis or running `BGREWRITEAOF` inside the container. To wipe Redis data: remove the volume or run `FLUSHDB`/`FLUSHALL` inside the container (conversations/summaries will be lost).
+
+3. **BM25** (`rag-bm25-data`): Persisted as JSON files per client (`bm25_{client_id}.json`). To reclaim space:
+   - Delete files for clients you no longer need: e.g. remove `bm25_old_client.json` from the volume mount path. The app will create a new empty index for that client on next use.
+   - BM25 now persists **tokens + metadata only** (content is resolved from Chroma at search time), so existing files will shrink after the next persist cycle; new persists do not store full content.

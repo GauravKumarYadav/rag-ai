@@ -20,12 +20,17 @@ logger = logging.getLogger(__name__)
 
 # Try to import Docling
 try:
-    from docling.document_converter import DocumentConverter
+    from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.base_models import InputFormat
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.datamodel.accelerator_options import AcceleratorOptions
     DOCLING_AVAILABLE = True
 except ImportError:
     DOCLING_AVAILABLE = False
     logger.warning("Docling not available. Install with: pip install docling")
+
+# Throttle Docling parallelism so uploads do not saturate CPU; extraction quality unchanged
+DOCLING_NUM_THREADS = 4
 
 
 class DoclingProcessor:
@@ -48,13 +53,22 @@ class DoclingProcessor:
     
     @property
     def converter(self) -> Optional[DocumentConverter]:
-        """Lazy-load the Docling converter."""
+        """Lazy-load the Docling converter with throttled parallelism."""
         if self._converter is None and DOCLING_AVAILABLE:
             try:
-                self._converter = DocumentConverter()
-                logger.info("Docling converter initialized")
+                accelerator = AcceleratorOptions(
+                    num_threads=DOCLING_NUM_THREADS,
+                    device="auto",
+                )
+                pipeline_options = PdfPipelineOptions(accelerator_options=accelerator)
+                self._converter = DocumentConverter(
+                    format_options={
+                        InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options),
+                    }
+                )
+                logger.info("Docling converter initialized (num_threads=%s)", DOCLING_NUM_THREADS)
             except Exception as e:
-                logger.error(f"Failed to initialize Docling converter: {e}")
+                logger.error("Failed to initialize Docling converter: %s", e)
         return self._converter
     
     def can_process(self, filename: str) -> bool:
