@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import tempfile
@@ -23,6 +24,18 @@ from app.processors.chunking import (
 
 
 router = APIRouter()
+
+# Limit concurrent document uploads (Docling/OCR) so chat stays responsive.
+# One upload at a time; accuracy unchanged.
+_UPLOAD_SEMAPHORE: Optional[asyncio.Semaphore] = None
+
+
+def get_upload_semaphore(max_concurrent: int = 1) -> asyncio.Semaphore:
+    """Return the global upload semaphore (lazy-initialized)."""
+    global _UPLOAD_SEMAPHORE
+    if _UPLOAD_SEMAPHORE is None:
+        _UPLOAD_SEMAPHORE = asyncio.Semaphore(max_concurrent)
+    return _UPLOAD_SEMAPHORE
 
 
 class DocumentUploadResponse(BaseModel):
@@ -62,9 +75,9 @@ def extract_text_with_docling(file_path: str, fast_mode: bool = False) -> str:
         from docling.datamodel.accelerator_options import AcceleratorOptions
         from docling.datamodel.base_models import InputFormat
         
-        # Optimize accelerator settings
+        # Throttle parallelism so uploads do not saturate CPU; extraction quality unchanged
         accelerator = AcceleratorOptions(
-            num_threads=8,  # Increase parallelism
+            num_threads=4,
             device="auto",  # Will use MPS on Mac, CUDA on NVIDIA, CPU otherwise
         )
         
@@ -100,20 +113,7 @@ def extract_text_with_docling(file_path: str, fast_mode: bool = False) -> str:
         raise ValueError(f"Failed to extract text with Docling: {e}")
 
 
-def extract_text_from_pdf_pypdf(content: bytes) -> str:
-    """Fallback: Extract text from PDF using pypdf (text-based PDFs only)."""
-    try:
-        from pypdf import PdfReader
-        pdf_file = io.BytesIO(content)
-        reader = PdfReader(pdf_file)
-        text_parts = []
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text_parts.append(page_text)
-        return "\n\n".join(text_parts)
-    except Exception as e:
-        raise ValueError(f"Failed to parse PDF: {e}")
+# Note: pypdf fallback removed - using Docling only for all document extraction
 
 
 @router.post("/upload", response_model=DocumentUploadResponse, summary="Upload documents")
@@ -147,7 +147,6 @@ async def upload_documents(
     - Rich metadata including page numbers and section headings
     - Client isolation enforced
     """
-    from app.core.metrics import record_chunks_created
     from app.rag.embeddings import get_embedding_fingerprint
     
     # Handle client creation/lookup
@@ -189,71 +188,69 @@ async def upload_documents(
     effective_chunk_size = chunk_size or settings.rag.chunk_size
     effective_overlap = chunk_overlap or settings.rag.chunk_overlap
 
-    for file in files:
-        content = await file.read()
-        filename = file.filename or "unknown"
-        mimetype = file.content_type
-        
-        # Use the processor registry to extract text
-        try:
-            if ProcessorRegistry.can_process(filename, mimetype):
-                # Get processor with optional config
-                from app.processors.base import ProcessorConfig
-                config = ProcessorConfig(
-                    use_ocr=use_ocr,
-                    fast_mode=fast_mode,
+    # Serialize upload processing so Docling/OCR does not starve chat
+    async with get_upload_semaphore():
+        for file in files:
+            content = await file.read()
+            filename = file.filename or "unknown"
+            mimetype = file.content_type
+            
+            # Use the processor registry to extract text
+            try:
+                if ProcessorRegistry.can_process(filename, mimetype):
+                    # Get processor with optional config
+                    from app.processors.base import ProcessorConfig
+                    config = ProcessorConfig(
+                        use_ocr=use_ocr,
+                        fast_mode=fast_mode,
+                    )
+                    text = extract_text(content, filename, mimetype, config)
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Unsupported file type: {filename}",
+                    )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"Failed to extract text from {filename}: {str(e)}"
                 )
-                text = extract_text(content, filename, mimetype, config)
-            else:
+
+            if not text.strip():
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Unsupported file type: {filename}",
+                    detail=f"No text content could be extracted from {filename}",
                 )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Failed to extract text from {filename}: {str(e)}"
+
+            # Generate document ID
+            doc_id = generate_doc_id(filename, actual_client_id)
+            
+            # Chunk with rich metadata and content-hash IDs
+            chunks = chunk_document(
+                text=text,
+                doc_id=doc_id,
+                client_id=actual_client_id,
+                source_filename=filename,
+                embedding_fingerprint=embedding_fp,
+                extra_metadata={
+                    "uploaded_by": current_user.get("user_id"),
+                    "uploaded_at": datetime.utcnow().isoformat(),
+                },
             )
+            
+            all_chunks.extend(chunks)
+            all_chunk_ids.extend([c.id for c in chunks])
+            doc_count += 1
 
-        if not text.strip():
-            raise HTTPException(
-                status_code=400,
-                detail=f"No text content could be extracted from {filename}",
-            )
-
-        # Generate document ID
-        doc_id = generate_doc_id(filename, actual_client_id)
-        
-        # Chunk with rich metadata and content-hash IDs
-        chunks = chunk_document(
-            text=text,
-            doc_id=doc_id,
-            client_id=actual_client_id,
-            source_filename=filename,
-            embedding_fingerprint=embedding_fp,
-            extra_metadata={
-                "uploaded_by": current_user.get("user_id"),
-                "uploaded_at": datetime.utcnow().isoformat(),
-            },
-        )
-        
-        all_chunks.extend(chunks)
-        all_chunk_ids.extend([c.id for c in chunks])
-        doc_count += 1
-        
-        # Record metrics
-        doc_type = os.path.splitext(filename)[1].lower() or "unknown"
-        record_chunks_created(actual_client_id, doc_type, len(chunks))
-
-    if all_chunks:
-        # Prepare data for vector store
-        contents = [c.content for c in all_chunks]
-        ids = [c.id for c in all_chunks]
-        metadatas = [c.metadata.to_dict() for c in all_chunks]
-        
-        store.add_documents(contents=contents, ids=ids, metadatas=metadatas)
+        if all_chunks:
+            # Prepare data for vector store
+            contents = [c.content for c in all_chunks]
+            ids = [c.id for c in all_chunks]
+            metadatas = [c.metadata.to_dict() for c in all_chunks]
+            
+            store.add_documents(contents=contents, ids=ids, metadatas=metadatas)
 
     return DocumentUploadResponse(
         message="Documents uploaded successfully",
@@ -317,10 +314,9 @@ async def list_documents(
 ):
     """List all uploaded documents with metadata."""
     try:
-        if client_id:
-            store = get_client_vector_store(client_id)
-        else:
-            store = get_vector_store()
+        # Use GLOBAL_CLIENT_ID when no client_id specified (consistent with upload)
+        actual_client_id = client_id if client_id else GLOBAL_CLIENT_ID
+        store = get_client_vector_store(actual_client_id)
         
         # Get all documents from the store
         all_docs = store.docs.get(include=["metadatas"])
@@ -411,25 +407,25 @@ async def delete_document(
     
     total_deleted = 0
     
-    # If client_id specified, only search that client's store
-    if client_id:
-        store = get_client_vector_store(client_id)
-        total_deleted = find_and_delete_in_store(store, document_id)
-    else:
-        # Try global store first
-        store = get_vector_store()
-        total_deleted = find_and_delete_in_store(store, document_id)
-        
-        # If not found in global, search all client stores
-        if total_deleted == 0:
-            client_store = get_client_store()
-            all_clients = await client_store.list_all()
-            for client in all_clients:
-                client_vs = get_client_vector_store(client.id)
-                deleted = find_and_delete_in_store(client_vs, document_id)
-                if deleted > 0:
-                    total_deleted = deleted
-                    break  # Found and deleted
+    # Use GLOBAL_CLIENT_ID when no client_id specified (consistent with upload/list)
+    actual_client_id = client_id if client_id else GLOBAL_CLIENT_ID
+    
+    # Search the specified (or global) client's store
+    store = get_client_vector_store(actual_client_id)
+    total_deleted = find_and_delete_in_store(store, document_id)
+    
+    # If not found and searching global, also check other client stores
+    if total_deleted == 0 and not client_id:
+        client_store = get_client_store()
+        all_clients = await client_store.list_all()
+        for client in all_clients:
+            if client.id == GLOBAL_CLIENT_ID:
+                continue  # Already checked
+            client_vs = get_client_vector_store(client.id)
+            deleted = find_and_delete_in_store(client_vs, document_id)
+            if deleted > 0:
+                total_deleted = deleted
+                break  # Found and deleted
     
     if total_deleted > 0:
         return {"message": f"Deleted {total_deleted} chunks", "deleted_count": total_deleted}

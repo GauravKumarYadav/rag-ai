@@ -16,8 +16,8 @@ class ProcessorConfig:
     use_ocr: bool = True
     fast_mode: bool = False
     
-    # Performance settings
-    num_threads: int = 8
+    # Performance settings (throttled so uploads do not saturate CPU)
+    num_threads: int = 4
     device: str = "auto"  # "auto", "cpu", "cuda", "mps"
     
     # Docling-specific settings

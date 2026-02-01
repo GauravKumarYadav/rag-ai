@@ -205,22 +205,9 @@ class Retriever:
         Returns:
             Client-filtered, diverse, high-quality list of RetrievalHit
         """
-        from app.core.metrics import (
-            record_retrieval_duration,
-            record_retrieval_results,
-            record_cross_client_filter,
-            record_rerank_duration,
-            record_rerank_skipped,
-            record_stage_skipped,
-            record_stage_executed,
-        )
-        
         start_time = time.time()
         fetch_k = fetch_k or settings.rag.initial_fetch_k
         lambda_mult = lambda_mult if lambda_mult is not None else settings.rag.mmr_lambda
-        
-        # Record that we're applying client filter
-        record_cross_client_filter(client_id)
         
         # Get client-specific vector store
         client_store = get_client_vector_store(client_id)
@@ -234,8 +221,6 @@ class Retriever:
         )
         
         if not candidates:
-            record_retrieval_duration(client_id, "client_filtered", time.time() - start_time)
-            record_retrieval_results(client_id, 0)
             return []
         
         logger.debug(f"Fetched {len(candidates)} candidates for client {client_id}")
@@ -247,16 +232,11 @@ class Retriever:
         )
         
         if self.reranker and not should_skip_rerank:
-            record_stage_executed("rerank")
-            rerank_start = time.time()
             rerank_k = min(len(candidates), top_k * 3)
             reranked = self.reranker.rerank(query, candidates, top_k=rerank_k)
-            record_rerank_duration(time.time() - rerank_start)
             logger.debug(f"Reranked to {len(reranked)} candidates")
         else:
             if should_skip_rerank:
-                record_rerank_skipped()
-                record_stage_skipped("rerank", "high_confidence")
                 logger.debug(f"Skipped rerank - high confidence retrieval")
             reranked = candidates
         
@@ -273,9 +253,8 @@ class Retriever:
         else:
             results = reranked[:top_k]
         
-        # Record metrics
-        record_retrieval_duration(client_id, "client_filtered", time.time() - start_time)
-        record_retrieval_results(client_id, len(results))
+        duration = time.time() - start_time
+        logger.debug(f"Client retrieval completed in {duration:.3f}s, {len(results)} results")
         
         return results
     

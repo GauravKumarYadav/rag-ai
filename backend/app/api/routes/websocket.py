@@ -112,6 +112,7 @@ async def websocket_chat(
             
             request = ChatRequest(
                 conversation_id=data.get("conversation_id", client_id),
+                client_id=client_id,
                 message=message,
                 images=images,
                 stream=True,  # Always stream over WebSocket

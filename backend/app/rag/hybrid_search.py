@@ -133,17 +133,7 @@ class HybridSearch:
         Returns:
             HybridSearchResult with hits and stats
         """
-        from app.core.metrics import (
-            record_retrieval_duration,
-            record_retrieval_results,
-            record_cross_client_filter,
-            record_rerank_duration,
-        )
-        
         start_time = time.time()
-        
-        # Record that we're applying client filter
-        record_cross_client_filter(self.client_id)
         
         # 1. Get candidates from vector search (client-scoped)
         vector_hits = self.vector_store.query(
@@ -154,11 +144,15 @@ class HybridSearch:
         )
         logger.debug(f"Vector search for client {self.client_id} returned {len(vector_hits)} candidates")
         
-        # 2. Get candidates from BM25 search (client-scoped)
+        # 2. Get candidates from BM25 search (client-scoped); resolve content from Chroma when not on disk
+        content_resolver = None
+        if hasattr(self.vector_store, "get_documents_by_ids"):
+            content_resolver = lambda ids: self.vector_store.get_documents_by_ids(ids)
         bm25_hits = self.bm25_index.search(
             query=query,
             top_k=fetch_k,
             where=where,
+            content_resolver=content_resolver,
         )
         logger.debug(f"BM25 search for client {self.client_id} returned {len(bm25_hits)} candidates")
         
@@ -168,16 +162,13 @@ class HybridSearch:
         
         # 4. Optionally rerank with cross-encoder
         if use_reranker and self.reranker and fused_hits:
-            rerank_start = time.time()
             fused_hits = self.reranker.rerank(query, fused_hits, top_k=top_k)
-            record_rerank_duration(time.time() - rerank_start)
             logger.debug(f"Reranker returned {len(fused_hits)} results")
         else:
             fused_hits = fused_hits[:top_k]
         
-        # Record metrics
-        record_retrieval_duration(self.client_id, "hybrid", time.time() - start_time)
-        record_retrieval_results(self.client_id, len(fused_hits))
+        duration = time.time() - start_time
+        logger.debug(f"Hybrid search completed in {duration:.3f}s, {len(fused_hits)} results")
         
         return HybridSearchResult(
             hits=fused_hits,

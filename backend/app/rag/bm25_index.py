@@ -16,7 +16,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set
 
 from rank_bm25 import BM25Okapi
 
@@ -202,6 +202,7 @@ class BM25Index:
         query: str,
         top_k: int = 10,
         where: Optional[Dict] = None,
+        content_resolver: Optional[Callable[[List[str]], Dict[str, str]]] = None,
     ) -> List[RetrievalHit]:
         """
         Search the BM25 index.
@@ -210,6 +211,8 @@ class BM25Index:
             query: Search query string
             top_k: Number of results to return
             where: Optional metadata filter
+            content_resolver: Optional callable (ids -> id_to_content) to resolve
+                content from Chroma when not stored on disk (saves volume).
             
         Returns:
             List of RetrievalHit objects sorted by relevance
@@ -251,17 +254,22 @@ class BM25Index:
         
         # Sort by score (higher is better for BM25)
         results.sort(key=lambda x: x[1], reverse=True)
+        top_docs_with_scores = results[:top_k]
+        
+        # Resolve content from Chroma when not in memory (persisted without content)
+        id_to_content: Dict[str, str] = {}
+        if content_resolver and any(not doc.content for doc, _ in top_docs_with_scores):
+            ids_to_resolve = [doc.id for doc, _ in top_docs_with_scores if not doc.content]
+            id_to_content = content_resolver(ids_to_resolve)
         
         # Convert to RetrievalHit
         hits = []
-        for doc, score in results[:top_k]:
-            # Normalize score to 0-1 range (BM25 scores can vary widely)
-            # Lower score is better for consistency with distance metrics
+        for doc, score in top_docs_with_scores:
             normalized_score = 1.0 / (1.0 + score) if score > 0 else 1.0
-            
+            content = doc.content or id_to_content.get(doc.id, "")
             hits.append(RetrievalHit(
                 id=doc.id,
-                content=doc.content,
+                content=content,
                 score=normalized_score,
                 metadata=doc.metadata,
             ))
@@ -287,7 +295,7 @@ class BM25Index:
         return self.persist_path / filename
     
     def persist(self) -> None:
-        """Persist index to disk."""
+        """Persist index to disk (tokens + metadata only; content resolved from Chroma)."""
         file_path = self._get_persist_file()
         if not file_path:
             return
@@ -296,7 +304,6 @@ class BM25Index:
             "client_id": self.client_id,
             "documents": {
                 doc_id: {
-                    "content": doc.content,
                     "tokens": doc.tokens,
                     "metadata": doc.metadata,
                 }
@@ -308,10 +315,10 @@ class BM25Index:
         with open(file_path, "w") as f:
             json.dump(data, f)
         
-        logger.debug(f"Persisted BM25 index to {file_path}")
+        logger.debug("Persisted BM25 index to %s (tokens+metadata only)", file_path)
     
     def _load_from_disk(self) -> None:
-        """Load index from disk."""
+        """Load index from disk (tokens + metadata only; content resolved at search time)."""
         file_path = self._get_persist_file()
         if not file_path or not file_path.exists():
             return
@@ -324,18 +331,20 @@ class BM25Index:
             self.doc_order = data.get("doc_order", [])
             
             for doc_id, doc_data in data.get("documents", {}).items():
+                # Support legacy format with "content" for backwards compatibility
+                content = doc_data.get("content", "")
                 self.documents[doc_id] = BM25Document(
                     id=doc_id,
-                    content=doc_data["content"],
+                    content=content,
                     tokens=doc_data["tokens"],
                     metadata=doc_data.get("metadata", {}),
                 )
             
             self._dirty = True  # Need to rebuild BM25 index
-            logger.info(f"Loaded BM25 index from {file_path} with {len(self.documents)} docs")
+            logger.info("Loaded BM25 index from %s with %s docs", file_path, len(self.documents))
             
         except Exception as e:
-            logger.error(f"Failed to load BM25 index from {file_path}: {e}")
+            logger.error("Failed to load BM25 index from %s: %s", file_path, e)
 
 
 # Global index cache

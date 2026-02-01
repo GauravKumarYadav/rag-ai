@@ -42,6 +42,12 @@ htmlcov/
 # Data (keep structure, ignore contents)
 data/chroma/*
 !data/chroma/.gitkeep
+data/redis/*
+!data/redis/.gitkeep
+data/bm25/*
+!data/bm25/.gitkeep
+data/knowledge_graphs/*
+!data/knowledge_graphs/.gitkeep
 data/raw/*
 !data/raw/.gitkeep
 
@@ -60,3 +66,6 @@ logs/
 # mypy
 .mypy_cache/
 backend/data/chroma/*.bin
+.env
+.playwright-mcp
+data

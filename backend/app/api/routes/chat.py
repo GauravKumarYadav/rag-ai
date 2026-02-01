@@ -18,7 +18,6 @@ from app.models.schemas import ChatRequest, ChatResponse, ImageInput
 from app.services.chat_service import ChatService
 from app.dependencies import get_current_user, get_chat_service
 from app.auth.dependencies import get_allowed_clients, GLOBAL_CLIENT_ID
-from app.core.metrics import record_client_access_denied
 
 router = APIRouter()
 
@@ -48,10 +47,6 @@ def validate_and_get_client_id(
     
     # Validate access
     if requested_client_id not in allowed_clients:
-        record_client_access_denied(
-            client_id=requested_client_id,
-            user_id=user_id,
-        )
         raise HTTPException(
             status_code=403,
             detail=f"Access denied to client '{requested_client_id}'. "

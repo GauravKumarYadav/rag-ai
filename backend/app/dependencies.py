@@ -156,13 +156,14 @@ def get_vector_store():
 
 
 # ============================================================
-# DATABASE DEPENDENCIES
+# REDIS DEPENDENCIES
 # ============================================================
 
-async def get_db_pool():
-    """Get the MySQL connection pool."""
-    from app.db.mysql import get_db_pool
-    return await get_db_pool()
+def get_redis_client():
+    """Get the Redis client."""
+    import redis
+    from app.config import settings
+    return redis.from_url(settings.redis.url, decode_responses=True)
 
 
 # ============================================================

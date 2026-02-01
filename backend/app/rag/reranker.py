@@ -9,8 +9,12 @@ Default model: cross-encoder/ms-marco-MiniLM-L-6-v2
 - Small and fast (~22M params)
 - Trained on MS MARCO passage ranking
 - Good balance of speed and accuracy
+
+Concurrency: A semaphore limits concurrent reranker runs so multiple users
+do not saturate CPU; accuracy is unchanged.
 """
 
+import asyncio
 import logging
 from functools import lru_cache
 from typing import List, Optional
@@ -21,6 +25,18 @@ from app.config import settings
 from app.models.schemas import RetrievalHit
 
 logger = logging.getLogger(__name__)
+
+# Limit concurrent reranker runs to avoid CPU saturation (e.g. 3-4 users).
+# Accuracy unchanged; extra requests wait in line.
+RERANKER_SEMAPHORE: Optional[asyncio.Semaphore] = None
+
+
+def get_reranker_semaphore(max_concurrent: int = 2) -> asyncio.Semaphore:
+    """Return the global reranker semaphore (lazy-initialized)."""
+    global RERANKER_SEMAPHORE
+    if RERANKER_SEMAPHORE is None:
+        RERANKER_SEMAPHORE = asyncio.Semaphore(max_concurrent)
+    return RERANKER_SEMAPHORE
 
 # Lazy load sentence-transformers to avoid startup overhead
 _cross_encoder = None

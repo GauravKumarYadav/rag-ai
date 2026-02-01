@@ -1,4 +1,5 @@
 """Client management API endpoints."""
+
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,8 +11,13 @@ from app.models.client import (
     ClientUpdate,
     get_client_store,
 )
-from app.rag.vector_store import get_client_vector_store, clear_client_vector_store_cache
-from app.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_superuser, get_allowed_clients
+from app.auth.users import (
+    get_users_for_client,
+    add_user_client,
+    remove_user_client,
+    get_user_by_id,
+)
 
 
 router = APIRouter()
@@ -40,37 +46,6 @@ class ClientStatsResponse(BaseModel):
     document_count: int
     memory_count: int
 
-
-# =============================================================================
-# USER-CLIENT ASSIGNMENT MODELS
-# =============================================================================
-
-class UserClientResponse(BaseModel):
-    """Response model for user-client assignment."""
-    user_id: str
-    client_id: str
-    message: str
-
-
-class ClientUserResponse(BaseModel):
-    """Response model for user info in client context."""
-    id: str
-    username: str
-    email: Optional[str]
-    is_superuser: bool
-
-
-class UserClientListResponse(BaseModel):
-    """Response for listing users of a client."""
-    client_id: str
-    client_name: str
-    users: List[ClientUserResponse]
-    total: int
-
-
-# =============================================================================
-# STATIC ROUTES (must come before parameterized routes)
-# =============================================================================
 
 @router.post("", response_model=ClientResponse, summary="Create a new client")
 async def create_client(
@@ -128,6 +103,45 @@ async def list_clients(
     )
 
 
+@router.get("/my/assigned", response_model=ClientListResponse, summary="Get assigned clients")
+async def get_my_assigned_clients(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    allowed_clients: set = Depends(get_allowed_clients),
+):
+    """
+    Get clients assigned to the current user.
+    
+    Superusers get all clients. Regular users get only their assigned clients.
+    """
+    store = get_client_store()
+    
+    # Superusers get all clients
+    if current_user.get("is_superuser"):
+        clients = await store.list_all()
+    else:
+        # Regular users get only their assigned clients
+        clients = []
+        for client_id in allowed_clients:
+            client = await store.get(client_id)
+            if client:
+                clients.append(client)
+    
+    return ClientListResponse(
+        clients=[
+            ClientResponse(
+                id=c.id,
+                name=c.name,
+                aliases=c.aliases,
+                metadata=c.metadata,
+                created_at=c.created_at.isoformat(),
+                updated_at=c.updated_at.isoformat(),
+            )
+            for c in clients
+        ],
+        total=len(clients),
+    )
+
+
 @router.get("/search/by-name", response_model=ClientResponse, summary="Find client by name")
 async def find_client_by_name(
     name: str = Query(..., description="Client name to search"),
@@ -150,92 +164,6 @@ async def find_client_by_name(
         updated_at=client.updated_at.isoformat(),
     )
 
-
-@router.get("/my/assigned", summary="List my assigned clients")
-async def list_my_clients(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-):
-    """
-    List all clients the current user has access to.
-    
-    Returns the user's assigned clients, or all clients if user is admin.
-    """
-    from app.db.mysql import get_user_clients_db
-    
-    user_id = current_user.get("sub")
-    
-    if current_user.get("is_superuser"):
-        # Admins see all clients
-        store = get_client_store()
-        all_clients = await store.list_all()
-        return {
-            "user_id": user_id,
-            "is_superuser": True,
-            "clients": [
-                {
-                    "id": c.id,
-                    "name": c.name,
-                    "aliases": c.aliases,
-                }
-                for c in all_clients
-            ],
-            "total": len(all_clients),
-        }
-    
-    # Regular users see only their assigned clients
-    clients = await get_user_clients_db(user_id)
-    
-    return {
-        "user_id": user_id,
-        "is_superuser": False,
-        "clients": [
-            {
-                "id": c["client_id"],
-                "name": c.get("client_name", "Unknown"),
-                "role": c.get("role", "viewer"),
-            }
-            for c in clients
-        ],
-        "total": len(clients),
-    }
-
-
-@router.get("/user/{user_id}/assigned", summary="List clients for user")
-async def list_user_clients(
-    user_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-):
-    """
-    List all clients a specific user has access to.
-    
-    Regular users can only view their own assignments.
-    Admins can view any user's assignments.
-    """
-    from app.db.mysql import get_user_clients_db
-    
-    # Check authorization
-    if not current_user.get("is_superuser") and current_user.get("sub") != user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to view this user's clients")
-    
-    clients = await get_user_clients_db(user_id)
-    
-    return {
-        "user_id": user_id,
-        "clients": [
-            {
-                "id": c["client_id"],
-                "name": c.get("client_name", "Unknown"),
-                "role": c.get("role", "viewer"),
-            }
-            for c in clients
-        ],
-        "total": len(clients),
-    }
-
-
-# =============================================================================
-# PARAMETERIZED ROUTES (must come after static routes)
-# =============================================================================
 
 @router.get("/{client_id}", response_model=ClientResponse, summary="Get client by ID")
 async def get_client(
@@ -285,13 +213,12 @@ async def update_client(
 @router.delete("/{client_id}", summary="Delete client")
 async def delete_client(
     client_id: str,
-    delete_documents: bool = Query(False),
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(require_superuser),
 ):
     """
     Delete a client.
     
-    If delete_documents=True, also deletes all documents associated with the client.
+    Requires admin privileges. The global client cannot be deleted.
     """
     store = get_client_store()
     client = await store.get(client_id)
@@ -299,15 +226,12 @@ async def delete_client(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     
-    if delete_documents:
-        # Delete client's vector store collections
-        client_store = get_client_vector_store(client_id)
-        client_store.delete_all()
-        clear_client_vector_store_cache(client_id)
+    if client_id == "global":
+        raise HTTPException(status_code=400, detail="Cannot delete the global client")
     
     await store.delete(client_id)
     
-    return {"message": f"Client '{client.name}' deleted", "documents_deleted": delete_documents}
+    return {"message": f"Client '{client.name}' deleted"}
 
 
 @router.get("/{client_id}/stats", response_model=ClientStatsResponse, summary="Get client stats")
@@ -316,43 +240,93 @@ async def get_client_stats(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Get document and memory statistics for a client."""
+    from app.rag.vector_store import get_client_vector_store
+    
     client_store = get_client_store()
     client = await client_store.get(client_id)
     
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     
-    vector_store = get_client_vector_store(client_id)
-    stats = vector_store.get_stats()
+    try:
+        vector_store = get_client_vector_store(client_id)
+        stats = vector_store.get_stats()
+        doc_count = stats.get("document_count", 0)
+        mem_count = stats.get("memory_count", 0)
+    except Exception:
+        doc_count = 0
+        mem_count = 0
     
     return ClientStatsResponse(
         client_id=client_id,
         name=client.name,
-        document_count=stats["document_count"],
-        memory_count=stats["memory_count"],
+        document_count=doc_count,
+        memory_count=mem_count,
     )
 
 
-@router.post("/{client_id}/users/{user_id}", response_model=UserClientResponse, summary="Assign user to client")
-async def assign_user_to_client_endpoint(
+class UserAccessResponse(BaseModel):
+    """Response model for user access info."""
+    id: str
+    username: str
+    email: Optional[str] = None
+    is_superuser: bool
+    is_active: bool
+
+
+class UserAccessListResponse(BaseModel):
+    """Response model for user access list."""
+    users: List[UserAccessResponse]
+    total: int
+
+
+@router.get("/{client_id}/users", response_model=UserAccessListResponse, summary="List users with access")
+async def list_client_users(
     client_id: str,
-    user_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(require_superuser),
 ):
     """
-    Assign a user to a client, granting them access to that client's documents.
+    List all users with access to a client.
     
     Requires admin privileges.
     """
-    from app.db.mysql import assign_user_to_client, get_user_by_id
+    client_store = get_client_store()
+    client = await client_store.get(client_id)
     
-    # Check if current user is admin
-    if not current_user.get("is_superuser"):
-        raise HTTPException(status_code=403, detail="Admin privileges required")
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
     
-    # Verify client exists
-    store = get_client_store()
-    client = await store.get(client_id)
+    users = await get_users_for_client(client_id)
+    
+    return UserAccessListResponse(
+        users=[
+            UserAccessResponse(
+                id=u["id"],
+                username=u["username"],
+                email=u.get("email"),
+                is_superuser=u.get("is_superuser", False),
+                is_active=u.get("is_active", True),
+            )
+            for u in users
+        ],
+        total=len(users),
+    )
+
+
+@router.post("/{client_id}/users/{user_id}", summary="Grant user access to client")
+async def grant_user_access(
+    client_id: str,
+    user_id: str,
+    current_user: Dict[str, Any] = Depends(require_superuser),
+):
+    """
+    Grant a user access to a client.
+    
+    Requires admin privileges.
+    """
+    client_store = get_client_store()
+    client = await client_store.get(client_id)
+    
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     
@@ -361,84 +335,39 @@ async def assign_user_to_client_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Add assignment
-    success = await assign_user_to_client(user_id, client_id)
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to assign user to client (may already be assigned)")
+    success = await add_user_client(user_id, client_id)
     
-    return UserClientResponse(
-        user_id=user_id,
-        client_id=client_id,
-        message=f"User '{user['username']}' assigned to client '{client.name}'"
-    )
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to grant access")
+    
+    return {"message": f"User '{user['username']}' granted access to client '{client.name}'"}
 
 
-@router.delete("/{client_id}/users/{user_id}", summary="Remove user from client")
-async def remove_user_from_client(
+@router.delete("/{client_id}/users/{user_id}", summary="Revoke user access from client")
+async def revoke_user_access(
     client_id: str,
     user_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    current_user: Dict[str, Any] = Depends(require_superuser),
 ):
     """
-    Remove a user's access to a client.
+    Revoke a user's access to a client.
     
     Requires admin privileges.
     """
-    from app.db.mysql import remove_user_from_client as db_remove_user_from_client
+    client_store = get_client_store()
+    client = await client_store.get(client_id)
     
-    # Check if current user is admin
-    if not current_user.get("is_superuser"):
-        raise HTTPException(status_code=403, detail="Admin privileges required")
-    
-    # Verify client exists
-    store = get_client_store()
-    client = await store.get(client_id)
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     
-    # Remove assignment
-    success = await db_remove_user_from_client(user_id, client_id)
+    # Verify user exists
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    success = await remove_user_client(user_id, client_id)
+    
     if not success:
-        raise HTTPException(status_code=404, detail="User-client assignment not found")
+        raise HTTPException(status_code=500, detail="Failed to revoke access")
     
-    return {"message": f"User removed from client '{client.name}'"}
-
-
-@router.get("/{client_id}/users", response_model=UserClientListResponse, summary="List users for client")
-async def list_client_users(
-    client_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-):
-    """
-    List all users who have access to a specific client.
-    
-    Requires admin privileges.
-    """
-    from app.db.mysql import get_client_users_db
-    
-    # Check if current user is admin
-    if not current_user.get("is_superuser"):
-        raise HTTPException(status_code=403, detail="Admin privileges required")
-    
-    # Verify client exists
-    store = get_client_store()
-    client = await store.get(client_id)
-    if not client:
-        raise HTTPException(status_code=404, detail="Client not found")
-    
-    users = await get_client_users_db(client_id)
-    
-    return UserClientListResponse(
-        client_id=client_id,
-        client_name=client.name,
-        users=[
-            ClientUserResponse(
-                id=u["id"],
-                username=u["username"],
-                email=u.get("email"),
-                is_superuser=u.get("is_superuser", False),
-            )
-            for u in users
-        ],
-        total=len(users),
-    )
+    return {"message": f"User '{user['username']}' access to client '{client.name}' revoked"}

@@ -21,7 +21,16 @@ from app.config import settings
 
 @dataclass
 class ChunkMetadata:
-    """Rich metadata for a document chunk."""
+    """
+    Rich metadata for a document chunk.
+    
+    Includes fields for future knowledge graph integration:
+    - detected_entities: Named entities found in chunk
+    - entity_ids: Links to KG nodes
+    - semantic_type: Classification of chunk content
+    - parent_chunk_id: For hierarchical chunking
+    - references_chunks: Chunk IDs this references
+    """
     
     # Document identifiers
     doc_id: str
@@ -36,9 +45,19 @@ class ChunkMetadata:
     # Content structure (optional)
     page_number: Optional[int] = None
     section_heading: Optional[str] = None
+    paragraph_index: Optional[int] = None
     
     # Embedding tracking
     embedding_fingerprint: Optional[str] = None
+    
+    # KG-ready fields (for future knowledge graph integration)
+    detected_entities: List[Dict[str, str]] = field(default_factory=list)  # [{type: "PERSON", value: "John"}]
+    entity_ids: List[str] = field(default_factory=list)  # Links to KG nodes
+    semantic_type: Optional[str] = None  # fact, definition, procedure, example
+    
+    # Relationships (for hierarchical chunks)
+    parent_chunk_id: Optional[str] = None
+    references_chunks: List[str] = field(default_factory=list)
     
     # Additional metadata
     extra: Dict[str, Any] = field(default_factory=dict)
@@ -59,8 +78,22 @@ class ChunkMetadata:
             result["page_number"] = self.page_number
         if self.section_heading:
             result["section_heading"] = self.section_heading
+        if self.paragraph_index is not None:
+            result["paragraph_index"] = self.paragraph_index
         if self.embedding_fingerprint:
             result["embedding_fingerprint"] = self.embedding_fingerprint
+        
+        # KG-ready fields (store as JSON-serializable)
+        if self.detected_entities:
+            result["detected_entities"] = self.detected_entities
+        if self.entity_ids:
+            result["entity_ids"] = self.entity_ids
+        if self.semantic_type:
+            result["semantic_type"] = self.semantic_type
+        if self.parent_chunk_id:
+            result["parent_chunk_id"] = self.parent_chunk_id
+        if self.references_chunks:
+            result["references_chunks"] = self.references_chunks
         
         # Add extra metadata
         result.update(self.extra)
