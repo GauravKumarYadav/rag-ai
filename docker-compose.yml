@@ -28,7 +28,7 @@ services:
     ports:
       - "8020:8000"
     volumes:
-      - rag-chroma-data:/chroma/chroma
+      - ./data/chroma:/data
     environment:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
@@ -96,7 +96,7 @@ services:
       - SERVER__HOST=0.0.0.0
       - SERVER__PORT=8000
     volumes:
-      - rag-bm25-data:/app/data/bm25
+      - ./data/bm25:/app/data/bm25
       - ./data/raw:/app/data/raw:ro
     depends_on:
       redis:
@@ -140,5 +140,3 @@ networks:
 # Named volumes: data survives `compose down`. Use `compose down -v` only to wipe data.
 volumes:
   rag-redis-data:
-  rag-chroma-data:
-  rag-bm25-data:
