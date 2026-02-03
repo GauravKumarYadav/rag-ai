@@ -79,7 +79,7 @@ def get_embedding_fingerprint() -> str:
         Fingerprint string like "ollama:nomic-embed-text:768:true:1.0"
     """
     fp = EmbeddingFingerprint(
-        provider=settings.rag.embedding_provider,
+        provider=settings.embedding_provider,
         model=settings.rag.embedding_model,
         dimension=settings.rag.embedding_dimension,
         normalize=settings.rag.embedding_normalize,
