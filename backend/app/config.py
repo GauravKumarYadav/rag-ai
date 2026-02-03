@@ -19,14 +19,22 @@ class LMStudioSettings(BaseModel):
     model: str = "Qwen3-VL-30B-Instruct"
 
 
-class LLMSettings(BaseModel):
-    """All LLM-related settings (LM Studio only)."""
+class OllamaSettings(BaseModel):
+    """Ollama provider settings (remote via ngrok or local)."""
     
-    # Active provider (only lmstudio supported now)
+    base_url: str = "http://localhost:11434"  # e.g., https://<ngrok-id>.ngrok.io
+    model: str = "llama3"
+
+
+class LLMSettings(BaseModel):
+    """All LLM-related settings (LM Studio or Ollama)."""
+    
+    # Active provider (lmstudio | ollama | openai | custom)
     provider: str = "lmstudio"
     
-    # LM Studio settings
+    # Provider settings
     lmstudio: LMStudioSettings = LMStudioSettings()
+    ollama: OllamaSettings = OllamaSettings()
     
     # Common settings
     temperature: float = 0.35
@@ -34,8 +42,10 @@ class LLMSettings(BaseModel):
     timeout: float = 120.0
     context_window: int = 32000
     
-    def get_active_provider(self) -> LMStudioSettings:
-        """Get settings for the active provider (LM Studio)."""
+    def get_active_provider(self) -> LMStudioSettings | OllamaSettings:
+        """Get settings for the active provider."""
+        if self.provider == "ollama":
+            return self.ollama
         return self.lmstudio
 
 
@@ -51,7 +61,8 @@ class RAGSettings(BaseModel):
     
     # Embedding settings
     embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
-    embedding_provider: str = "lmstudio"
+    # Use "auto" to follow the LLM provider (lmstudio/ollama); set explicitly to override
+    embedding_provider: str = "auto"
     embedding_dimension: int = 768
     embedding_normalize: bool = True
     
@@ -230,6 +241,14 @@ class Settings(BaseSettings):
         return self.llm.lmstudio.model
     
     @property
+    def ollama_base_url(self) -> str:
+        return self.llm.ollama.base_url
+    
+    @property
+    def ollama_model(self) -> str:
+        return self.llm.ollama.model
+    
+    @property
     def llm_temperature(self) -> float:
         return self.llm.temperature
     
@@ -265,6 +284,17 @@ class Settings(BaseSettings):
     @property
     def vector_store_provider(self) -> str:
         return self.rag.provider
+    
+    @property
+    def embedding_provider(self) -> str:
+        """
+        Resolved embedding provider.
+        
+        If RAG embedding_provider is "auto", follow the active LLM provider
+        (lmstudio/ollama). Otherwise, use the explicitly configured value.
+        """
+        provider = (self.rag.embedding_provider or "").strip().lower()
+        return self.llm.provider if provider in ("", "auto", "llm") else self.rag.embedding_provider
     
     @property
     def vector_store_url(self) -> Optional[str]:
