@@ -64,10 +64,30 @@ class SynthesisAgent:
     
     def __init__(self) -> None:
         self.cost_tracker = get_cost_tracker()
+        
+        # Resolve provider-specific LLM config
+        provider = settings.llm_provider.lower()
+        if provider == "groq":
+            base_url = settings.groq_base_url
+            model = settings.groq_model
+            api_key = settings.groq_api_key
+        elif provider == "openai":
+            base_url = settings.openai_base_url
+            model = settings.openai_model
+            api_key = settings.openai_api_key
+        elif provider == "custom":
+            base_url = settings.custom_base_url
+            model = settings.custom_model
+            api_key = settings.custom_api_key
+        else:  # default to lmstudio/ollama-compatible endpoint
+            base_url = settings.lmstudio_base_url
+            model = settings.lmstudio_model
+            api_key = "lmstudio"
+        
         self.llm = ChatOpenAI(
-            base_url=settings.llm.lmstudio.base_url,
-            model=settings.llm.lmstudio.model,
-            api_key="lmstudio",
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
             temperature=settings.llm.temperature,
             max_tokens=settings.llm.max_tokens,
             timeout=settings.llm.timeout,

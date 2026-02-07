@@ -15,6 +15,8 @@ def get_current_model_info() -> tuple[str, str]:
         model = settings.ollama_model or "Ollama Model"
     elif provider == "lmstudio":
         model = settings.lmstudio_model or "LM Studio Model"
+    elif provider == "groq":
+        model = settings.groq_model or "Groq Model"
     elif provider == "openai":
         model = settings.openai_model or "OpenAI Model"
     elif provider == "custom":

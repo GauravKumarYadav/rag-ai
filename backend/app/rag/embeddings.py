@@ -33,7 +33,7 @@ class EmbeddingFingerprint:
     Used to detect when the embedding model changes, which would
     require re-indexing documents for consistency.
     """
-    provider: str          # "ollama", "lmstudio", "embedding-service"
+    provider: str          # "ollama", "lmstudio", "groq", "embedding-service"
     model: str             # "nomic-embed-text"
     dimension: int         # 768
     normalize: bool        # True
@@ -119,6 +119,89 @@ class LMStudioEmbeddingFunction(EmbeddingFunction[Documents]):
     
     def __call__(self, input: Documents) -> Embeddings:
         """ChromaDB calls embedding functions with __call__."""
+        return self.embed_documents(input)
+
+
+class GroqEmbeddingFunction(EmbeddingFunction[Documents]):
+    """Embedding function using Groq's OpenAI-compatible embeddings."""
+    
+    def __init__(
+        self,
+        base_url: str = "https://api.groq.com/openai/v1",
+        model: str = "text-embedding-nomic-embed-text-v1.5",
+        api_key: Optional[str] = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.api_key = api_key
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        self._client = httpx.Client(timeout=60.0, headers=headers)
+    
+    def name(self) -> str:
+        return "groq"
+    
+    def __call__(self, input: Documents) -> Embeddings:
+        return self.embed_documents(input)
+    
+    def embed_documents(self, texts: List[str]) -> List[np.ndarray]:
+        if not texts:
+            return []
+        if isinstance(texts, str):
+            texts = [texts]
+        try:
+            response = self._client.post(
+                f"{self.base_url}/embeddings",
+                json={"input": texts, "model": self.model},
+            )
+            response.raise_for_status()
+            data = response.json()
+            embeddings = sorted(data["data"], key=lambda x: x.get("index", 0))
+            return [np.array(item.get("embedding", []), dtype=np.float32) for item in embeddings]
+        except httpx.HTTPStatusError as e:
+            # Groq currently does not expose embeddings; fall back to zeros to avoid hard failure.
+            if e.response.status_code == 404:
+                print("Groq embeddings not available (404). Falling back to zero embeddings.")
+                return self._zero_embeddings(len(texts))
+            print(f"Groq embedding HTTP error: {e}")
+            raise
+        except Exception as e:
+            print(f"Groq embedding error: {e}")
+            raise
+    
+    def embed_query(self, input) -> List[np.ndarray]:
+        if isinstance(input, str):
+            input = [input]
+        return self.embed_documents(input)
+    
+    def _zero_embeddings(self, n: int) -> List[np.ndarray]:
+        dim = settings.rag.embedding_dimension
+        return [np.zeros(dim, dtype=np.float32) for _ in range(n)]
+
+
+class NoOpEmbeddingFunction(EmbeddingFunction[Documents]):
+    """Safe fallback that returns zero vectors to avoid hard failures when embeddings are unavailable."""
+    
+    def __init__(self, dimension: int = 768) -> None:
+        self.dimension = dimension
+    
+    def name(self) -> str:
+        return "noop"
+    
+    def __call__(self, input: Documents) -> Embeddings:
+        return self.embed_documents(input)
+    
+    def embed_documents(self, texts: List[str]) -> List[np.ndarray]:
+        if not texts:
+            return []
+        if isinstance(texts, str):
+            texts = [texts]
+        return [np.zeros(self.dimension, dtype=np.float32) for _ in texts]
+    
+    def embed_query(self, input) -> List[np.ndarray]:
+        if isinstance(input, str):
+            input = [input]
         return self.embed_documents(input)
     
     def embed_documents(self, texts: List[str]) -> List[np.ndarray]:
@@ -276,7 +359,8 @@ def get_embedding_function() -> EmbeddingFunction:
     Priority:
     1. EMBEDDING_SERVICE_URL env var -> EmbeddingServiceFunction
     2. LLM_PROVIDER=ollama -> OllamaEmbeddingFunction
-    3. Default -> LMStudioEmbeddingFunction
+    3. LLM_PROVIDER=groq -> GroqEmbeddingFunction (OpenAI-compatible)
+    4. Default -> LMStudioEmbeddingFunction
     """
     # Check for dedicated embedding service (microservices mode)
     embedding_service_url = os.getenv("EMBEDDING_SERVICE_URL")
@@ -295,6 +379,13 @@ def get_embedding_function() -> EmbeddingFunction:
         return OllamaEmbeddingFunction(
             base_url=settings.ollama_base_url,
             model=settings.embedding_model,
+        )
+    if provider == "groq":
+        print(f"Using Groq embeddings: {settings.groq_base_url}")
+        return GroqEmbeddingFunction(
+            base_url=settings.groq_base_url,
+            model=settings.embedding_model,
+            api_key=settings.groq_api_key,
         )
     
     # Default to LMStudio

@@ -50,7 +50,7 @@ def create_llm_client(
     Factory function to create an LLM client based on provider.
     
     Args:
-        provider: One of "lmstudio", "ollama", "openai", "custom"
+        provider: One of "lmstudio", "ollama", "groq", "openai", "custom"
         base_url: Override the default base URL
         model: Override the default model
         api_key: API key (for OpenAI or custom endpoints)
@@ -82,6 +82,16 @@ def create_llm_client(
             max_tokens=tokens,
             timeout=timeout,
             provider=LLMProvider.OPENAI,
+        )
+    elif provider == "groq":
+        return OpenAICompatibleClient(
+            base_url=base_url or settings.groq_base_url,
+            model=model or settings.groq_model,
+            api_key=api_key or settings.groq_api_key,
+            temperature=temp,
+            max_tokens=tokens,
+            timeout=timeout,
+            provider=LLMProvider.GROQ,
         )
     elif provider == "custom":
         return OpenAICompatibleClient(
@@ -125,7 +135,7 @@ def switch_llm_provider(
     Switch to a different LLM provider at runtime.
     
     Args:
-        provider: One of "lmstudio", "ollama", "openai", "custom"
+        provider: One of "lmstudio", "ollama", "groq", "openai", "custom"
         base_url: Override the default base URL
         model: Override the default model  
         api_key: API key (for OpenAI or custom endpoints)

@@ -14,6 +14,7 @@ class LLMProvider(str, Enum):
     LMSTUDIO = "lmstudio"
     OLLAMA = "ollama"
     OPENAI = "openai"
+    GROQ = "groq"
     CUSTOM = "custom"
 
 
