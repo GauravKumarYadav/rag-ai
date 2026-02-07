@@ -11,7 +11,7 @@ async def health(client: LMStudioClient = Depends(get_lmstudio_client)) -> dict:
     
     Returns:
         status: "ok" if LLM is reachable
-        llm_provider: Active provider (lmstudio, ollama, openai, custom)
+        llm_provider: Active provider (lmstudio, ollama, groq, openai, custom)
         llm_model: Currently configured model name
         llm_base_url: API endpoint being used
     """

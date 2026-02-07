@@ -69,3 +69,4 @@ backend/data/chroma/*.bin
 .env
 .playwright-mcp
 data
+.cursor/

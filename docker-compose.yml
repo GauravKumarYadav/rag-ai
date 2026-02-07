@@ -57,16 +57,21 @@ services:
     container_name: rag-chat-api
     ports:
       - "8000:8000"
+    env_file:
+      - ./.env
     environment:
       # LLM Configuration (LM Studio)
-      - LLM__PROVIDER=lmstudio
+      - LLM__PROVIDER=${LLM__PROVIDER:-groq}
       - LLM__LMSTUDIO__BASE_URL=${LLM__LMSTUDIO__BASE_URL:-http://host.docker.internal:1234/v1}
       - LLM__LMSTUDIO__MODEL=${LLM__LMSTUDIO__MODEL:-Qwen3-VL-30B-Instruct}
+      - LLM__GROQ__BASE_URL=${LLM__GROQ__BASE_URL:-https://api.groq.com/openai/v1}
+      - LLM__GROQ__MODEL=${LLM__GROQ__MODEL:-llama-3.3-70b-versatile}
+      - LLM__GROQ__API_KEY=${LLM__GROQ__API_KEY}
       - LLM__TEMPERATURE=${LLM__TEMPERATURE:-0.35}
       - LLM__MAX_TOKENS=${LLM__MAX_TOKENS:-4096}
       - LLM__CONTEXT_WINDOW=${LLM__CONTEXT_WINDOW:-32000}
       # Embedding
-      - EMBEDDING_PROVIDER=lmstudio
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-auto}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-nomic-embed-text-v1.5}
       # RAG Configuration
       - RAG__PROVIDER=chromadb

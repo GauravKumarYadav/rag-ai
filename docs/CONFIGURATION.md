@@ -5,11 +5,14 @@ All settings are read from `.env`. Key variables only; avoid unused legacy setti
 ## LLM
 | Variable | Example | Notes |
 | --- | --- | --- |
-| `LLM__PROVIDER` | `lmstudio` | Providers: `lmstudio` (default), `ollama` |
+| `LLM__PROVIDER` | `lmstudio` | Providers: `lmstudio` (default), `ollama`, `groq`, `openai`, `custom` |
 | `LLM__LMSTUDIO__BASE_URL` | `http://host.containers.internal:1234/v1` | LM Studio OpenAI-compatible endpoint |
 | `LLM__LMSTUDIO__MODEL` | `qwen/qwen3-vl-30b` | Any loaded model name |
 | `LLM__OLLAMA__BASE_URL` | `https://3bf866fda35d.ngrok-free.app` | Remote Ollama host (no `/api` suffix) |
 | `LLM__OLLAMA__MODEL` | `llama3` | Must exist on that Ollama instance |
+| `LLM__GROQ__BASE_URL` | `https://api.groq.com/openai/v1` | Groq OpenAI-compatible endpoint |
+| `LLM__GROQ__MODEL` | `llama-3.3-70b-versatile` | Default Groq model (free tier) |
+| `LLM__GROQ__API_KEY` | *(secret)* | Required; create at https://console.groq.com/keys |
 | `LLM__TEMPERATURE` | `0.2` | 0-1 |
 | `LLM__MAX_TOKENS` | `1024` | Max response length |
 

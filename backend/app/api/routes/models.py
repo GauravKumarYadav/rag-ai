@@ -36,7 +36,7 @@ class ProviderInfo(BaseModel):
 
 
 class SwitchProviderRequest(BaseModel):
-    provider: str  # "lmstudio", "ollama", "openai", "custom"
+    provider: str  # "lmstudio", "ollama", "groq", "openai", "custom"
     base_url: Optional[str] = None
     model: Optional[str] = None
     api_key: Optional[str] = None
@@ -90,10 +90,11 @@ async def switch_provider(request: SwitchProviderRequest):
     Supported providers:
     - **lmstudio**: Local LMStudio server (default: localhost:1234)
     - **ollama**: Local Ollama server (default: localhost:11434)
+    - **groq**: Groq API (default: api.groq.com/openai/v1; requires API key)
     - **openai**: OpenAI API (requires api_key)
     - **custom**: Any OpenAI-compatible endpoint
     """
-    valid_providers = ["lmstudio", "ollama", "openai", "custom"]
+    valid_providers = ["lmstudio", "ollama", "groq", "openai", "custom"]
     if request.provider not in valid_providers:
         raise HTTPException(
             status_code=400,
@@ -155,6 +156,14 @@ async def list_providers():
                 "description": "OpenAI API (GPT-4, GPT-3.5, etc.)",
                 "default_url": settings.openai_base_url,
                 "default_model": settings.openai_model,
+                "requires_api_key": True,
+            },
+            {
+                "id": "groq",
+                "name": "Groq",
+                "description": "Groq API (OpenAI-compatible, free tier)",
+                "default_url": settings.groq_base_url,
+                "default_model": settings.groq_model,
                 "requires_api_key": True,
             },
             {

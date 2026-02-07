@@ -2,8 +2,7 @@
 
 This module provides a structured configuration system using Pydantic v2 settings.
 Settings are organized into nested groups for better organization and type safety.
-
-Simplified for LM Studio only with multi-agent LangGraph architecture.
+Supports LM Studio, Ollama, Groq, OpenAI, or any OpenAI-compatible endpoint.
 """
 
 from typing import List, Optional
@@ -26,15 +25,42 @@ class OllamaSettings(BaseModel):
     model: str = "llama3"
 
 
-class LLMSettings(BaseModel):
-    """All LLM-related settings (LM Studio or Ollama)."""
+class GroqSettings(BaseModel):
+    """Groq provider settings (OpenAI-compatible)."""
     
-    # Active provider (lmstudio | ollama | openai | custom)
+    base_url: str = "https://api.groq.com/openai/v1"
+    model: str = "llama-3.3-70b-versatile"
+    api_key: Optional[SecretStr] = None
+
+
+class OpenAISettings(BaseModel):
+    """OpenAI provider settings (OpenAI-compatible)."""
+    
+    base_url: str = "https://api.openai.com/v1"
+    model: str = "gpt-4o-mini"
+    api_key: Optional[SecretStr] = None
+
+
+class CustomLLMSettings(BaseModel):
+    """Custom OpenAI-compatible provider settings."""
+    
+    base_url: str = "http://localhost:8001/v1"
+    model: str = "local-model"
+    api_key: Optional[SecretStr] = None
+
+
+class LLMSettings(BaseModel):
+    """All LLM-related settings (LM Studio, Ollama, Groq, OpenAI, or Custom)."""
+    
+    # Active provider (lmstudio | ollama | groq | openai | custom)
     provider: str = "lmstudio"
     
     # Provider settings
     lmstudio: LMStudioSettings = LMStudioSettings()
     ollama: OllamaSettings = OllamaSettings()
+    groq: GroqSettings = GroqSettings()
+    openai: OpenAISettings = OpenAISettings()
+    custom: CustomLLMSettings = CustomLLMSettings()
     
     # Common settings
     temperature: float = 0.35
@@ -42,10 +68,18 @@ class LLMSettings(BaseModel):
     timeout: float = 120.0
     context_window: int = 32000
     
-    def get_active_provider(self) -> LMStudioSettings | OllamaSettings:
+    def get_active_provider(
+        self,
+    ) -> LMStudioSettings | OllamaSettings | GroqSettings | OpenAISettings | CustomLLMSettings:
         """Get settings for the active provider."""
         if self.provider == "ollama":
             return self.ollama
+        if self.provider == "groq":
+            return self.groq
+        if self.provider == "openai":
+            return self.openai
+        if self.provider == "custom":
+            return self.custom
         return self.lmstudio
 
 
@@ -247,6 +281,42 @@ class Settings(BaseSettings):
     @property
     def ollama_model(self) -> str:
         return self.llm.ollama.model
+    
+    @property
+    def groq_base_url(self) -> str:
+        return self.llm.groq.base_url
+    
+    @property
+    def groq_model(self) -> str:
+        return self.llm.groq.model
+    
+    @property
+    def groq_api_key(self) -> Optional[str]:
+        return self.llm.groq.api_key.get_secret_value() if self.llm.groq.api_key else None
+    
+    @property
+    def openai_base_url(self) -> str:
+        return self.llm.openai.base_url
+    
+    @property
+    def openai_model(self) -> str:
+        return self.llm.openai.model
+    
+    @property
+    def openai_api_key(self) -> Optional[str]:
+        return self.llm.openai.api_key.get_secret_value() if self.llm.openai.api_key else None
+    
+    @property
+    def custom_base_url(self) -> str:
+        return self.llm.custom.base_url
+    
+    @property
+    def custom_model(self) -> str:
+        return self.llm.custom.model
+    
+    @property
+    def custom_api_key(self) -> Optional[str]:
+        return self.llm.custom.api_key.get_secret_value() if self.llm.custom.api_key else None
     
     @property
     def llm_temperature(self) -> float:
