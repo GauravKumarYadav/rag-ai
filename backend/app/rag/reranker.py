@@ -26,17 +26,36 @@ from app.models.schemas import RetrievalHit
 
 logger = logging.getLogger(__name__)
 
-# Limit concurrent reranker runs to avoid CPU saturation (e.g. 3-4 users).
-# Accuracy unchanged; extra requests wait in line.
-RERANKER_SEMAPHORE: Optional[asyncio.Semaphore] = None
+# Initialize semaphore once at module level based on settings
+# Use settings.rag.reranker_max_concurrent if available, default to 2
+_max_concurrent = getattr(settings.rag, 'reranker_max_concurrent', 2)
+RERANKER_SEMAPHORE: asyncio.Semaphore = asyncio.Semaphore(_max_concurrent)
 
 
-def get_reranker_semaphore(max_concurrent: int = 2) -> asyncio.Semaphore:
-    """Return the global reranker semaphore (lazy-initialized)."""
-    global RERANKER_SEMAPHORE
-    if RERANKER_SEMAPHORE is None:
-        RERANKER_SEMAPHORE = asyncio.Semaphore(max_concurrent)
+def get_reranker_semaphore() -> asyncio.Semaphore:
+    """
+    Return the global reranker semaphore.
+    
+    The semaphore is initialized once at module load time based on
+    settings.rag.reranker_max_concurrent (default: 2).
+    """
     return RERANKER_SEMAPHORE
+
+
+def reload_reranker_semaphore(max_concurrent: int) -> None:
+    """
+    Reload the reranker semaphore with a new max concurrent value.
+    
+    Note: This is primarily for testing or hot-reload scenarios.
+    Existing waiters on the old semaphore will not be affected.
+    
+    Args:
+        max_concurrent: New maximum concurrent reranker operations
+    """
+    global RERANKER_SEMAPHORE
+    RERANKER_SEMAPHORE = asyncio.Semaphore(max_concurrent)
+    logger.info(f"Reranker semaphore reloaded with max_concurrent={max_concurrent}")
+
 
 # Lazy load sentence-transformers to avoid startup overhead
 _cross_encoder = None

@@ -7,8 +7,10 @@ This agent is responsible for:
 """
 
 import logging
+import math
+import re
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from langsmith import traceable
 
@@ -16,10 +18,161 @@ from app.agents.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+# Pre-compiled patterns for zero-allocation matching
+TOKEN_PATTERN = re.compile(r'\d+\.?\d*|\+|\-|\*|\/|\^|\(|\)|%')
+SUSPICIOUS_PATTERNS = ['import', 'eval', 'exec', 'compile', '__', 'lambda', ';']
+
+
+class SafeCalculator:
+    """
+    Production-safe calculator with O(n) parsing and minimal memory.
+    Uses shunting-yard algorithm for safe infix expression evaluation.
+    """
+    
+    # Operator precedence (higher = evaluated first)
+    PRECEDENCE = {'+': 1, '-': 1, '*': 2, '/': 2, '%': 2, '^': 3}
+    
+    @classmethod
+    def execute(cls, expression: str) -> str:
+        """
+        Execute a mathematical expression safely.
+        
+        Args:
+            expression: Mathematical expression string
+            
+        Returns:
+            Result as string or error message
+        """
+        try:
+            # Fast rejection of suspicious input
+            if cls._contains_suspicious_patterns(expression):
+                return "Error: Invalid characters in expression"
+            
+            # Tokenize and validate
+            tokens = cls._tokenize(expression)
+            if not tokens:
+                return "Error: Empty expression"
+            
+            # Evaluate using shunting-yard algorithm
+            result = cls._evaluate_tokens(tokens)
+            return cls._format_result(result)
+            
+        except ZeroDivisionError:
+            return "Error: Division by zero"
+        except (ValueError, SyntaxError) as e:
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.warning(f"Calculator evaluation error: {e}")
+            return "Error: Could not evaluate expression"
+    
+    @classmethod
+    def _contains_suspicious_patterns(cls, expr: str) -> bool:
+        """Fast check for dangerous patterns."""
+        expr_lower = expr.lower()
+        return any(dangerous in expr_lower for dangerous in SUSPICIOUS_PATTERNS)
+    
+    @classmethod
+    def _tokenize(cls, expr: str) -> List[str]:
+        """Tokenize with bounds checking."""
+        if not expr:
+            return []
+        
+        # Normalize unicode operators
+        expr = expr.replace('×', '*').replace('÷', '/').replace('−', '-')
+        
+        tokens = TOKEN_PATTERN.findall(expr)
+        
+        # Validate token count (prevent memory exhaustion)
+        if len(tokens) > 100:
+            raise ValueError("Expression too complex")
+        
+        return tokens
+    
+    @classmethod
+    def _evaluate_tokens(cls, tokens: List[str]) -> float:
+        """Shunting-yard algorithm for safe infix evaluation."""
+        output: List[float] = []
+        operators: List[str] = []
+        
+        for token in tokens:
+            if cls._is_number(token):
+                output.append(float(token))
+            elif token in cls.PRECEDENCE:
+                # Pop operators with higher or equal precedence
+                while (operators and 
+                       operators[-1] in cls.PRECEDENCE and 
+                       cls.PRECEDENCE[operators[-1]] >= cls.PRECEDENCE[token]):
+                    cls._apply_operator(output, operators.pop())
+                operators.append(token)
+            elif token == '(':
+                operators.append(token)
+            elif token == ')':
+                # Pop until matching '('
+                while operators and operators[-1] != '(':
+                    cls._apply_operator(output, operators.pop())
+                if not operators:
+                    raise ValueError("Mismatched parentheses")
+                operators.pop()  # Remove '('
+        
+        # Apply remaining operators
+        while operators:
+            if operators[-1] in '()':
+                raise ValueError("Mismatched parentheses")
+            cls._apply_operator(output, operators.pop())
+        
+        if len(output) != 1:
+            raise ValueError("Invalid expression")
+        
+        return output[0]
+    
+    @staticmethod
+    def _is_number(token: str) -> bool:
+        """Check if token is a valid number."""
+        try:
+            float(token)
+            return True
+        except ValueError:
+            return False
+    
+    @classmethod
+    def _apply_operator(cls, output: List[float], op: str) -> None:
+        """Apply operator to top two values on output stack."""
+        if len(output) < 2:
+            raise ValueError("Invalid expression")
+        
+        b = output.pop()
+        a = output.pop()
+        
+        if op == '+':
+            output.append(a + b)
+        elif op == '-':
+            output.append(a - b)
+        elif op == '*':
+            output.append(a * b)
+        elif op == '/':
+            output.append(a / b)
+        elif op == '^':
+            output.append(math.pow(a, b))
+        elif op == '%':
+            output.append(a % b)
+    
+    @staticmethod
+    def _format_result(result: float) -> Union[int, str]:
+        """Format result with reasonable precision."""
+        # Handle infinity and NaN
+        if not math.isfinite(result):
+            return "Error: Result out of range"
+        
+        # Format with reasonable precision
+        if result == int(result):
+            return int(result)
+        return round(result, 10)
+
 
 class CalculatorTool:
     """
     Calculator tool for mathematical expressions.
+    Delegates to SafeCalculator for secure evaluation.
     """
     
     @staticmethod
@@ -33,39 +186,7 @@ class CalculatorTool:
         Returns:
             Result as string or error message
         """
-        try:
-            # Clean up expression
-            expression = expression.strip()
-            
-            # Replace common patterns
-            expression = expression.replace('^', '**')  # Power
-            expression = expression.replace('×', '*')
-            expression = expression.replace('÷', '/')
-            
-            # Only allow safe characters
-            allowed = set('0123456789.+-*/() ')
-            if not all(c in allowed for c in expression):
-                return "Invalid expression: contains unsupported characters"
-            
-            # Evaluate safely
-            result = eval(expression, {"__builtins__": {}}, {})
-            
-            # Format result
-            if isinstance(result, float):
-                # Round to reasonable precision
-                if result == int(result):
-                    return str(int(result))
-                return f"{result:.6g}"
-            
-            return str(result)
-            
-        except ZeroDivisionError:
-            return "Error: Division by zero"
-        except SyntaxError:
-            return "Error: Invalid expression syntax"
-        except Exception as e:
-            logger.error(f"Calculator error: {e}")
-            return f"Error: {str(e)}"
+        return SafeCalculator.execute(expression)
 
 
 class DateTimeTool:

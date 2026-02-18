@@ -14,9 +14,12 @@ Embedding Fingerprinting:
 - Prevents silent degradation from embedding mismatches
 """
 
+import hashlib
 import logging
 import re
+from functools import lru_cache
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import chromadb
 
@@ -29,27 +32,93 @@ logger = logging.getLogger(__name__)
 # Metadata key for storing embedding fingerprint
 EMBEDDING_FINGERPRINT_KEY = "_embedding_fingerprint"
 
+# Pre-compiled regex for collection name sanitization
+INVALID_CHARS_RE = re.compile(r'[^a-zA-Z0-9_-]')
+MULTI_UNDERSCORE_RE = re.compile(r'_+')
+
 
 class EmbeddingMismatchError(Exception):
     """Raised when embedding configuration doesn't match stored index."""
     pass
 
 
+def _fast_hash(s: str) -> str:
+    """
+    Fast deterministic hash for collection naming.
+    Uses first 8 chars of MD5 (fast enough, collision-resistant for this use case).
+    """
+    return hashlib.md5(s.encode('utf-8')).hexdigest()[:8]
+
+
 def sanitize_collection_name(name: str) -> str:
     """
     Sanitize a string to be a valid ChromaDB collection name.
+    
     Rules: 3-63 chars, alphanumeric + underscores + hyphens, start/end with alphanum.
+    Includes hash suffix to prevent collisions between similar names.
+    
+    Examples:
+        "client-1" -> "client_1_a1b2c3d4"
+        "client_1" -> "client_1_9e8f7g6h"  (different hash)
     """
-    sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', name.lower())
-    sanitized = re.sub(r'_+', '_', sanitized)
-    sanitized = sanitized.strip('_-')
-    if sanitized and not sanitized[0].isalpha():
-        sanitized = 'c_' + sanitized
+    if not name:
+        name = "default"
+    
+    # Generate collision-resistant hash from original name
+    name_hash = _fast_hash(name)
+    
+    # Sanitize base name (max 25 chars to leave room for hash and underscore)
+    base = INVALID_CHARS_RE.sub('_', name.lower())[:25]
+    base = MULTI_UNDERSCORE_RE.sub('_', base)
+    base = base.strip('_-')
+    
+    # Combine with hash suffix
+    sanitized = f"{base}_{name_hash}" if base else f"col_{name_hash}"
+    
+    # Ensure length constraints (3-63 chars)
     if len(sanitized) < 3:
-        sanitized = sanitized + '_col'
+        sanitized = f"col_{name_hash}"
     if len(sanitized) > 63:
         sanitized = sanitized[:63].rstrip('_-')
+    
+    # Ensure starts with alphanumeric
+    if sanitized and not sanitized[0].isalnum():
+        sanitized = 'c' + sanitized[1:]
+    
     return sanitized
+
+
+@lru_cache(maxsize=32)
+def parse_chroma_url(url: str) -> tuple:
+    """
+    Parse ChromaDB URL with caching for repeated connections.
+    
+    Handles IPv6, ports, and various URL formats correctly.
+    
+    Args:
+        url: ChromaDB URL (e.g., "http://localhost:8000", "http://[::1]:8000")
+        
+    Returns:
+        Tuple of (host, port, scheme)
+    """
+    if not url:
+        raise ValueError("URL cannot be empty")
+    
+    parsed = urlparse(url.rstrip('/'))
+    
+    # Validate scheme
+    if parsed.scheme not in ('http', 'https'):
+        raise ValueError(f"Unsupported scheme: {parsed.scheme}. Use http or https.")
+    
+    # Extract host (handles IPv6 brackets automatically)
+    host = parsed.hostname
+    if not host:
+        raise ValueError(f"Could not extract hostname from URL: {url}")
+    
+    # Extract port (default to 8000)
+    port = parsed.port or 8000
+    
+    return host, port, parsed.scheme
 
 
 class ChromaVectorStore(VectorStoreBase):
@@ -68,20 +137,7 @@ class ChromaVectorStore(VectorStoreBase):
         # Initialize ChromaDB client
         if config.url:
             # Remote ChromaDB server
-            # Parse URL to extract host and port
-            url = config.url.rstrip("/")
-            if url.startswith("http://"):
-                url = url[7:]
-            elif url.startswith("https://"):
-                url = url[8:]
-            
-            if ":" in url:
-                host, port_str = url.rsplit(":", 1)
-                port = int(port_str)
-            else:
-                host = url
-                port = 8000  # Default ChromaDB port
-            
+            host, port, scheme = parse_chroma_url(config.url)
             self.client = chromadb.HttpClient(host=host, port=port)
         else:
             # Local persistent storage

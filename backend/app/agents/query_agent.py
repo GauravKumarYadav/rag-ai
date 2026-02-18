@@ -11,7 +11,7 @@ This agent is responsible for:
 import json
 import logging
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -23,6 +23,11 @@ from app.core.cost_tracker import get_cost_tracker
 
 logger = logging.getLogger(__name__)
 
+# Pre-compiled regex patterns for fast intent extraction
+JSON_BLOCK_RE = re.compile(r'```(?:json)?\s*\n?(.*?)\n?```', re.DOTALL)
+BRACES_RE = re.compile(r'\{[^{}]*\}')
+INTENT_RE = re.compile(r'"intent"\s*:\s*"([^"]+)"')
+NEEDS_RETRIEVAL_RE = re.compile(r'"needs_retrieval"\s*:\s*(true|false)', re.I)
 
 INTENT_CLASSIFICATION_PROMPT = """You are an intent classifier for a RAG chatbot.
 
@@ -127,7 +132,7 @@ class QueryAgent:
     @traceable(name="query_agent.classify_intent")
     async def _classify_intent(self, message: str, conversation_summary: str = "") -> Tuple[str, bool]:
         """
-        Classify the user's intent using LLM.
+        Classify the user's intent using LLM with robust JSON extraction.
         
         Args:
             message: User's message
@@ -151,23 +156,93 @@ class QueryAgent:
             ])
             
             text = response.content or ""
-            # Extract JSON from response
-            json_match = re.search(r'\{[^}]+\}', text)
-            if json_match:
-                data = json.loads(json_match.group())
-                intent = str(data.get("intent", intent)).strip().lower()
-                needs_retrieval = bool(data.get("needs_retrieval", needs_retrieval))
-                
-                # Validate intent
-                valid_intents = {"chitchat", "question", "follow_up", "tool", "document_list"}
-                if intent not in valid_intents:
-                    intent = "question"
-                    needs_retrieval = True
+            
+            # Multi-strategy JSON extraction
+            result = self._extract_intent_with_fallback(text)
+            if result:
+                intent, needs_retrieval = result
                     
         except Exception as e:
             logger.debug(f"Intent classification failed: {e}, defaulting to question")
         
         return intent, needs_retrieval
+    
+    def _extract_intent_with_fallback(self, text: str) -> Optional[Tuple[str, bool]]:
+        """
+        Extract intent using multiple strategies with fallback.
+        
+        Strategies (in order of preference):
+        1. JSON code blocks (most structured)
+        2. Inline JSON objects
+        3. Pattern matching (fastest fallback)
+        
+        Returns:
+            Tuple of (intent, needs_retrieval) or None if extraction fails
+        """
+        if not text:
+            return None
+        
+        # Strategy 1: JSON code blocks
+        result = self._extract_from_code_blocks(text)
+        if result:
+            return result
+        
+        # Strategy 2: Inline JSON
+        result = self._extract_inline_json(text)
+        if result:
+            return result
+        
+        # Strategy 3: Pattern matching (fastest)
+        return self._extract_patterns(text)
+    
+    def _extract_from_code_blocks(self, text: str) -> Optional[Tuple[str, bool]]:
+        """Extract from markdown code blocks."""
+        for match in JSON_BLOCK_RE.finditer(text):
+            try:
+                data = json.loads(match.group(1).strip())
+                return self._validate_and_return(data)
+            except (json.JSONDecodeError, AttributeError):
+                continue
+        return None
+    
+    def _extract_inline_json(self, text: str) -> Optional[Tuple[str, bool]]:
+        """Extract from inline JSON objects."""
+        for match in BRACES_RE.finditer(text):
+            try:
+                data = json.loads(match.group())
+                return self._validate_and_return(data)
+            except json.JSONDecodeError:
+                continue
+        return None
+    
+    def _extract_patterns(self, text: str) -> Optional[Tuple[str, bool]]:
+        """Fast pattern-based extraction (O(n) regex)."""
+        intent_match = INTENT_RE.search(text)
+        needs_match = NEEDS_RETRIEVAL_RE.search(text)
+        
+        if not intent_match:
+            return None
+        
+        intent = intent_match.group(1).lower()
+        needs_retrieval = needs_match.group(1).lower() == 'true' if needs_match else True
+        
+        return self._validate_intent(intent, needs_retrieval)
+    
+    def _validate_and_return(self, data: dict) -> Optional[Tuple[str, bool]]:
+        """Validate extracted JSON data."""
+        intent = str(data.get('intent', '')).lower().strip()
+        needs_retrieval = data.get('needs_retrieval', True)
+        
+        return self._validate_intent(intent, needs_retrieval)
+    
+    def _validate_intent(self, intent: str, needs_retrieval: bool) -> Optional[Tuple[str, bool]]:
+        """Validate and normalize intent."""
+        valid_intents = {"chitchat", "question", "follow_up", "tool", "document_list"}
+        
+        if intent not in valid_intents:
+            return None
+        
+        return intent, bool(needs_retrieval)
     
     @traceable(name="query_agent.rewrite_query")
     async def _rewrite_query(self, query: str, context: str) -> str:
