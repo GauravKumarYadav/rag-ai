@@ -95,39 +95,22 @@ class ChatService:
         
         # Handle streaming
         if request.stream:
-            async def stream_response() -> AsyncGenerator[str, None]:
+            async def stream_chunks() -> AsyncGenerator[str, None]:
+                """Yield plain text chunks — transport layer adds framing."""
                 message_id = generate_message_id()
-                start_time = time.monotonic()
                 
                 try:
-                    # Send start event with metadata
-                    yield f"data: {json.dumps({'type': 'start', 'message_id': message_id})}\n\n"
-                    
                     # Stream content in chunks for memory efficiency
                     chunk_size = 100  # characters per chunk
                     for i in range(0, len(response), chunk_size):
-                        chunk = response[i:i + chunk_size]
-                        # Properly escape for SSE format
-                        encoded_chunk = chunk.replace('\n', '\\n').replace('\r', '\\r')
-                        yield f"data: {json.dumps({'type': 'content', 'chunk': encoded_chunk})}\n\n"
-                    
-                    # Send completion event
-                    duration = time.monotonic() - start_time
-                    yield f"data: {json.dumps({'type': 'end', 'duration_ms': int(duration * 1000)})}\n\n"
+                        yield response[i:i + chunk_size]
                     
                 except asyncio.CancelledError:
-                    # Client disconnected - log but don't error
                     logger.info(f"Stream cancelled by client for message {message_id}")
                     raise
                 except Exception as e:
                     logger.error(f"Streaming error for message {message_id}: {e}", exc_info=True)
-                    # Notify client of error
-                    error_payload = json.dumps({
-                        'type': 'error',
-                        'message': 'Stream interrupted',
-                        'message_id': message_id
-                    })
-                    yield f"data: {error_payload}\n\n"
+                    raise
                 finally:
                     # Always complete post-turn processing, even if streaming failed
                     try:
@@ -135,7 +118,7 @@ class ChatService:
                     except Exception as e:
                         logger.error(f"Post-turn processing error: {e}")
             
-            return stream_response(), retrieved
+            return stream_chunks(), retrieved
         
         # Non-streaming: update memory synchronously
         await self._post_turn(request, response, background_tasks)

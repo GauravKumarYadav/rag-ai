@@ -529,7 +529,7 @@ class SessionBuffer:
                 logger.error(f"Failed to list conversations from Redis: {e}")
         
         # Also include in-memory conversations not in Redis
-        for conv_id, buffer in self.buffers.items():
+        for conv_id, buffer in self.memory_fallback._buffers.items():
             if not any(c["id"] == conv_id for c in conversations):
                 messages = list(buffer)
                 title = ""
