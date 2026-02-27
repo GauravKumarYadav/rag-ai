@@ -1,0 +1,30 @@
+# Production overrides for Oracle Cloud ARM A1 (4 OCPU, 24GB RAM)
+# Usage: docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d
+#
+# Internal service ports (6380, 8020, 8000) are NOT accessible from the internet
+# because Oracle VCN security list only opens ports 22, 80, and 443.
+
+services:
+  redis:
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    mem_limit: 3g
+
+  chromadb:
+    mem_limit: 4g
+    cpus: '1'
+
+  chat-api:
+    mem_limit: 12g
+    cpus: '2'
+    environment:
+      # Force Groq as LLM provider on server
+      - LLM__PROVIDER=groq
+      # Internal Docker network URLs
+      - RAG__URL=http://chromadb:8000
+      - REDIS__URL=redis://redis:6379
+
+  nginx:
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro

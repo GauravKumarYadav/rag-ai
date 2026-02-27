@@ -5,7 +5,10 @@ This service provides the main chat interface using the LangGraph
 multi-agent orchestrator for RAG operations.
 """
 
+import asyncio
+import json
 import logging
+import time
 from typing import AsyncGenerator, List, Optional, Tuple
 
 from fastapi import BackgroundTasks
@@ -21,6 +24,12 @@ from app.agents.orchestrator import get_orchestrator
 logger = logging.getLogger(__name__)
 
 
+def generate_message_id() -> str:
+    """Generate unique message ID for tracking."""
+    import uuid
+    return str(uuid.uuid4())[:8]
+
+
 class ChatService:
     """
     Simplified chat service using multi-agent LangGraph orchestrator.
@@ -29,6 +38,7 @@ class ChatService:
     - Multi-agent RAG pipeline
     - Auto-summarization when context exceeds threshold
     - Client-scoped and global document retrieval
+    - Production-grade streaming with error boundaries
     """
     
     def __init__(
@@ -85,14 +95,32 @@ class ChatService:
         
         # Handle streaming
         if request.stream:
-            async def stream_response() -> AsyncGenerator[str, None]:
-                encoded = response.replace('\n', '\\n')
-                yield f"data: {encoded}\n\n"
-                await self._post_turn(request, response, background_tasks)
+            async def stream_chunks() -> AsyncGenerator[str, None]:
+                """Yield plain text chunks — transport layer adds framing."""
+                message_id = generate_message_id()
+                
+                try:
+                    # Stream content in chunks for memory efficiency
+                    chunk_size = 100  # characters per chunk
+                    for i in range(0, len(response), chunk_size):
+                        yield response[i:i + chunk_size]
+                    
+                except asyncio.CancelledError:
+                    logger.info(f"Stream cancelled by client for message {message_id}")
+                    raise
+                except Exception as e:
+                    logger.error(f"Streaming error for message {message_id}: {e}", exc_info=True)
+                    raise
+                finally:
+                    # Always complete post-turn processing, even if streaming failed
+                    try:
+                        await self._post_turn(request, response, background_tasks)
+                    except Exception as e:
+                        logger.error(f"Post-turn processing error: {e}")
             
-            return stream_response(), retrieved
+            return stream_chunks(), retrieved
         
-        # Update memory
+        # Non-streaming: update memory synchronously
         await self._post_turn(request, response, background_tasks)
         
         return response, retrieved

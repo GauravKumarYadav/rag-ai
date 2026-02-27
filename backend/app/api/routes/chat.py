@@ -161,7 +161,18 @@ async def chat(
     )
     
     if chat_request.stream:
-        return StreamingResponse(result, media_type="text/event-stream")
+        async def sse_wrapper():
+            """Wrap plain text chunks from chat service in SSE framing."""
+            message_id = __import__("uuid").uuid4().hex[:8]
+            start_time = __import__("time").monotonic()
+            yield f"data: {json.dumps({'type': 'start', 'message_id': message_id})}\n\n"
+            async for chunk in result:
+                encoded = chunk.replace('\n', '\\n').replace('\r', '\\r')
+                yield f"data: {json.dumps({'type': 'content', 'chunk': encoded})}\n\n"
+            duration = __import__("time").monotonic() - start_time
+            yield f"data: {json.dumps({'type': 'end', 'duration_ms': int(duration * 1000)})}\n\n"
+
+        return StreamingResponse(sse_wrapper(), media_type="text/event-stream")
     
     payload = ChatResponse(response=result, sources=sources)
     return JSONResponse(content=payload.model_dump())

@@ -125,22 +125,14 @@ async def websocket_chat(
             try:
                 result, sources = await service.handle_chat(request, background_tasks=None)
                 
-                # Stream chunks
+                # Stream plain text chunks directly
                 full_response = ""
                 async for chunk in result:
-                    # Remove SSE formatting but preserve content whitespace
-                    content = chunk
-                    if content.startswith("data: "):
-                        content = content[6:]
-                    # Remove trailing SSE newlines but preserve internal whitespace
-                    content = content.rstrip('\n')
-                    # Decode escaped newlines from SSE format
-                    content = content.replace('\\n', '\n')
-                    if content:
-                        full_response += content
+                    if chunk:
+                        full_response += chunk
                         await websocket.send_json({
                             "type": "chunk",
-                            "content": content
+                            "content": chunk
                         })
                 
                 # Send completion with sources

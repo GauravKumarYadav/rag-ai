@@ -70,3 +70,13 @@ backend/data/chroma/*.bin
 .playwright-mcp
 data
 .cursor/
+
+# Frontend
+frontend/tsconfig.tsbuildinfo
+frontend/node_modules
+frontend/dist
+
+# SSH keys / secrets
+keys/
+*.key
+*.pem
