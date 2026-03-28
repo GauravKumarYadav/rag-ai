@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 3: Retrieval Strategies — Agentic RAG Masterclass</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="nav-brand">🤖 <span>Agentic RAG</span> Masterclass</div>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Home</a>
+    <a href="module1.html" class="nav-link">1</a>
+    <a href="module2.html" class="nav-link">2</a>
+    <a href="module3.html" class="nav-link active">3</a>
+    <a href="module4.html" class="nav-link">4</a>
+    <a href="module5.html" class="nav-link">5</a>
+    <a href="module6.html" class="nav-link">6</a>
+    <a href="module7.html" class="nav-link">7</a>
+    <a href="module8.html" class="nav-link">8</a>
+  </div>
+</nav>
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+<main>
+
+  <header class="module-header">
+    <div class="module-number">Module 3 of 8</div>
+    <h1 class="module-title">Retrieval Strategies</h1>
+    <p class="module-subtitle">The heart of RAG — how the system finds the right documents using BM25, vectors, fusion, and reranking.</p>
+  </header>
+
+  <!-- Section 1: Why Hybrid -->
+  <section class="section" id="s1">
+    <h2 class="section-title">🔍 Why Two Search Methods?</h2>
+    <p>Imagine you're searching a library. You could search by <strong>exact words on the spine</strong> (keyword search) or by <strong>meaning and topic</strong> (semantic search). Each misses things the other catches.</p>
+
+    <table class="comparison-table">
+      <thead><tr><th>Aspect</th><th>BM25 (Keyword)</th><th>Vector (Semantic)</th><th>Hybrid (Our System)</th></tr></thead>
+      <tbody>
+        <tr><td>How it works</td><td>Counts word frequency, rewards rare words</td><td>Converts text to numbers (embeddings), finds similar meanings</td><td>Runs both, combines results</td></tr>
+        <tr><td>Good at</td><td>Exact terms: "policy ABC-123", names, codes</td><td>Meaning: "refund process" matches "return policy"</td><td>Both exact AND meaning</td></tr>
+        <tr><td>Bad at</td><td>Paraphrases, synonyms</td><td>Rare terms, codes, exact strings</td><td>Slightly slower (runs two searches)</td></tr>
+        <tr><td>Speed</td><td>Very fast (inverted index)</td><td>Fast (ANN search)</td><td>~2x single search</td></tr>
+        <tr><td>Our config</td><td><code>bm25_weight=0.4</code></td><td><code>vector_weight=0.6</code></td><td>RRF fusion</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-aha">
+      <div class="callout-icon">💡</div>
+      <div class="callout-content">
+        <div class="callout-title">Aha! Why Not Just Use Vectors?</div>
+        <div class="callout-text">Vector search converts "What is policy XYZ-789?" into numbers. But "XYZ-789" is a <em>rare code</em> — its embedding doesn't capture its importance. BM25 scores it highly because rare terms get high weight (TF-IDF principle). That's why hybrid search outperforms either alone in real-world benchmarks.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: The Retrieval Pipeline -->
+  <section class="section" id="s2">
+    <h2 class="section-title">🔄 The Full Retrieval Pipeline</h2>
+
+    <div class="flow-diagram">
+      <div class="flow-node flow-node-primary">Query</div>
+      <div class="flow-arrow">→</div>
+      <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+        <div class="flow-node flow-node-secondary">🔤 BM25 Search</div>
+        <div class="flow-node flow-node-secondary">🧬 Vector Search</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-warning">⚖️ RRF Fusion</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-tertiary">🎯 Cross-Encoder Rerank</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-primary">Top 5 Results</div>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <div class="step-title">BM25 fetches 30 candidates</div>
+          <div class="step-text">Keyword search using <code>rank_bm25.BM25Okapi</code>. Scores documents by word frequency — rare words in the query get more weight.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <div class="step-title">Vector search fetches 30 candidates</div>
+          <div class="step-text">ChromaDB converts the query to a 768-dimension embedding and finds the closest document embeddings by distance.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <div class="step-title">Reciprocal Rank Fusion combines them</div>
+          <div class="step-text">RRF assigns scores based on rank position: <code>score = 1/(k + rank)</code>. BM25 weighted at 0.4, vector at 0.6. No score calibration needed!</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <div class="step-title">Cross-encoder reranks top results</div>
+          <div class="step-text">The <code>ms-marco-MiniLM-L-6-v2</code> cross-encoder reads query+document <em>together</em> (not separately). Much more accurate than embedding-only scoring. Returns top 5.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: RRF Deep Dive -->
+  <section class="section" id="s3">
+    <h2 class="section-title">⚖️ Reciprocal Rank Fusion (RRF)</h2>
+    <p>RRF is like <strong>combining election results from two voting districts</strong>. Each search method "votes" for documents by ranking them. RRF converts ranks into scores and adds them up.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — hybrid_search.py</div>
+<pre><span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">_rrf_fusion</span>(self, bm25_hits, vector_hits):
+    scores = {}
+    k = <span style="color: var(--code-number)">60</span>  <span style="color: var(--code-comment)"># RRF constant</span>
+
+    <span style="color: var(--code-keyword)">for</span> rank, hit <span style="color: var(--code-keyword)">in</span> enumerate(bm25_hits):
+        scores[hit.id] = scores.get(hit.id, <span style="color: var(--code-number)">0</span>)
+        scores[hit.id] += bm25_weight * (
+            <span style="color: var(--code-number)">1.0</span> / (k + rank + <span style="color: var(--code-number)">1</span>))
+
+    <span style="color: var(--code-keyword)">for</span> rank, hit <span style="color: var(--code-keyword)">in</span> enumerate(vector_hits):
+        scores[hit.id] = scores.get(hit.id, <span style="color: var(--code-number)">0</span>)
+        scores[hit.id] += vector_weight * (
+            <span style="color: var(--code-number)">1.0</span> / (k + rank + <span style="color: var(--code-number)">1</span>))
+
+    <span style="color: var(--code-comment)"># Normalize to 0-1 range</span>
+    <span style="color: var(--code-comment)"># Convert to distance (lower=better)</span></pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>Combining two ranked lists into one:</strong></div>
+        <div class="line">k=60 is a smoothing constant (standard in RRF)</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>For each BM25 result (by rank):</strong></div>
+        <div class="line">→ Score = 0.4 × (1 / (60 + rank))</div>
+        <div class="line">→ Rank 1 gets 0.4 × 1/61 = 0.00656</div>
+        <div class="line">→ Rank 10 gets 0.4 × 1/70 = 0.00571</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>For each vector result (by rank):</strong></div>
+        <div class="line">→ Score = 0.6 × (1 / (60 + rank))</div>
+        <div class="line">→ Higher weight = vector search has more influence</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Documents found by BOTH methods</strong></div>
+        <div class="line">get scores from both → ranked highest!</div>
+        <div class="line"><em>This is the magic: agreement = high confidence.</em></div>
+      </div>
+    </div>
+
+    <div class="callout callout-aha">
+      <div class="callout-icon">💡</div>
+      <div class="callout-content">
+        <div class="callout-title">Aha! Why RRF Instead of Score Addition?</div>
+        <div class="callout-text">BM25 scores and vector distances are on completely different scales. BM25 might give scores of 5-25, while vector distances are 0.1-0.9. You can't just add them. RRF only uses <strong>rank position</strong> (1st, 2nd, 3rd...), making it scale-independent. No calibration needed!</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: Cross-Encoder Reranking -->
+  <section class="section" id="s4">
+    <h2 class="section-title">🎯 Cross-Encoder Reranking</h2>
+    <p>Think of retrieval as a <strong>talent show audition</strong>. BM25 and vector search are the first round — they pick 30 candidates quickly. The cross-encoder is the judges' panel that carefully evaluates each finalist.</p>
+
+    <table class="comparison-table">
+      <thead><tr><th>Aspect</th><th>Bi-Encoder (Embedding Search)</th><th>Cross-Encoder (Reranker)</th></tr></thead>
+      <tbody>
+        <tr><td>How it works</td><td>Encodes query and document <strong>separately</strong></td><td>Encodes query+document <strong>together</strong></td></tr>
+        <tr><td>Speed</td><td>Very fast (pre-computed embeddings)</td><td>Slow (runs model on each pair)</td></tr>
+        <tr><td>Accuracy</td><td>Good (misses nuances)</td><td>Excellent (sees full context)</td></tr>
+        <tr><td>Use case</td><td>Initial retrieval (30 candidates)</td><td>Final reranking (top 5)</td></tr>
+        <tr><td>Our model</td><td><code>nomic-embed-text-v1.5</code></td><td><code>ms-marco-MiniLM-L-6-v2</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — reranker.py</div>
+<pre><span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">Reranker</span>:
+    <span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">rerank</span>(self, query, hits, top_k):
+        <span style="color: var(--code-comment)"># Create query-document pairs</span>
+        pairs = [(query, hit.content)
+                 <span style="color: var(--code-keyword)">for</span> hit <span style="color: var(--code-keyword)">in</span> hits]
+
+        <span style="color: var(--code-comment)"># Get cross-encoder scores</span>
+        scores = self.model.predict(pairs)
+
+        <span style="color: var(--code-comment)"># Sort by score (higher = better)</span>
+        scored.sort(
+            key=<span style="color: var(--code-keyword)">lambda</span> x: x.score,
+            reverse=True)
+
+        <span style="color: var(--code-keyword)">return</span> scored[:top_k]</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>The reranker:</strong></div>
+        <div class="line">&nbsp;</div>
+        <div class="line">📋 <strong>Step 1:</strong> Pair each candidate with the query</div>
+        <div class="line">→ ("refund policy?", "Our refund policy states...")</div>
+        <div class="line">→ ("refund policy?", "Company history was...")</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🧠 <strong>Step 2:</strong> Feed each pair to the cross-encoder</div>
+        <div class="line">→ It reads both TOGETHER, understanding context</div>
+        <div class="line">→ Returns a relevance score for each pair</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🏆 <strong>Step 3:</strong> Sort by relevance score</div>
+        <div class="line">→ Most relevant at the top</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">✂️ <strong>Step 4:</strong> Keep only the top 5</div>
+        <div class="line"><em>30 candidates in → 5 best out</em></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: MMR Diversity -->
+  <section class="section" id="s5">
+    <h2 class="section-title">🌈 MMR: Preventing Duplicate Results</h2>
+    <p>Without diversity control, all 5 results might be slight variations of the same paragraph. <strong>MMR (Maximal Marginal Relevance)</strong> balances relevance with diversity.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Concept — MMR Formula</div>
+<pre><span style="color: var(--code-comment)"># MMR balances two goals:</span>
+MMR = λ × relevance
+    - (1-λ) × max_similarity_to_selected
+
+<span style="color: var(--code-comment)"># λ = 1.0 → pure relevance (no diversity)</span>
+<span style="color: var(--code-comment)"># λ = 0.0 → pure diversity (ignore relevance)</span>
+<span style="color: var(--code-comment)"># λ = 0.5 → balanced (our default)</span>
+
+<span style="color: var(--code-comment)"># Two modes in our system:</span>
+<span style="color: var(--code-comment)"># 1. Text-based: Jaccard word similarity</span>
+<span style="color: var(--code-comment)"># 2. Embedding-based: cosine similarity</span></pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>The diversity formula:</strong></div>
+        <div class="line">Score = How relevant is this document?</div>
+        <div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;MINUS How similar is it to docs we already picked?</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🎚️ <strong>λ controls the tradeoff:</strong></div>
+        <div class="line">→ λ=1: "Give me the most relevant, even if they overlap"</div>
+        <div class="line">→ λ=0: "Give me the most diverse, even if less relevant"</div>
+        <div class="line">→ λ=0.5: "Balance both" (our default)</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Two ways to measure "similar":</strong></div>
+        <div class="line">→ Count shared words (Jaccard) — fast, no model needed</div>
+        <div class="line">→ Compare embeddings (cosine) — semantic similarity</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 6: Client + Global Merge -->
+  <section class="section" id="s6">
+    <h2 class="section-title">🏢 Dual-Collection Search & Merge</h2>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — retrieval_agent.py</div>
+<pre><span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">_retrieve_with_global</span>(self, query, client_id):
+    client_results = []
+    global_results = []
+
+    <span style="color: var(--code-comment)"># Search client collection</span>
+    <span style="color: var(--code-keyword)">if</span> client_id != <span style="color: var(--code-string)">"global"</span>:
+        client_results = <span style="color: var(--code-keyword)">await</span> self._search(
+            query, client_id)
+
+    <span style="color: var(--code-comment)"># Search global collection</span>
+    global_results = <span style="color: var(--code-keyword)">await</span> self._search(
+        query, <span style="color: var(--code-string)">"global"</span>)
+
+    <span style="color: var(--code-comment)"># Merge: client first (priority)</span>
+    merged = self._merge_results(
+        client_results, global_results)
+
+    <span style="color: var(--code-keyword)">return</span> merged[:self.top_k]</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>Search two libraries, combine results:</strong></div>
+        <div class="line">&nbsp;</div>
+        <div class="line">📁 <strong>First:</strong> Search the client's private library</div>
+        <div class="line">→ Only if they're not the "global" client</div>
+        <div class="line">→ Full hybrid search (BM25 + vector + rerank)</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🌍 <strong>Then:</strong> Search the shared global library</div>
+        <div class="line">→ Documents available to everyone</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🔀 <strong>Merge with client priority:</strong></div>
+        <div class="line">→ Client docs added first (they take precedence)</div>
+        <div class="line">→ Global docs fill remaining slots</div>
+        <div class="line">→ Duplicates removed by chunk ID</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">✂️ Keep only top 5 results</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interview Questions -->
+  <section class="section" id="interview">
+    <h2 class="section-title">🎤 Interview Questions: Retrieval Strategies</h2>
+
+    <div class="interview-qa" id="q8">
+      <div class="qa-question" onclick="toggleQA('q8')">
+        <span class="qa-badge">Q8</span>
+        <span class="qa-question-text">When an agent's first retrieval attempt returns low-relevance results, what self-correction strategies can it employ?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Self-correction is <strong>partially implemented</strong> in our system:</p>
+        <ol>
+          <li><strong>Query rewriting (pre-retrieval):</strong> <code>QueryAgent._rewrite_query()</code> optimizes the query before searching</li>
+          <li><strong>Cross-encoder reranking (post-retrieval):</strong> Even noisy initial candidates get accurately rescored</li>
+          <li><strong>Dual-collection fallback:</strong> If client collection returns nothing, global results act as fallback</li>
+          <li><strong>Graceful admission:</strong> The synthesis prompt says: <em>"If the context doesn't contain enough information, say so clearly"</em></li>
+        </ol>
+        <p><strong>Not yet implemented:</strong> Iterative retrieval (re-query with sub-queries), HyDE (hypothetical document embedding)</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q9">
+      <div class="qa-question" onclick="toggleQA('q9')">
+        <span class="qa-badge">Q9</span>
+        <span class="qa-question-text">Compare dense vector, sparse keyword, and hybrid retrieval. When would an agent dynamically switch?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our system implements all three via configuration:</p>
+        <table class="comparison-table">
+          <thead><tr><th>Method</th><th>Implementation</th><th>Strengths</th></tr></thead>
+          <tbody>
+            <tr><td>Dense vector</td><td>ChromaDB + <code>nomic-embed-text-v1.5</code></td><td>Semantic similarity, paraphrases</td></tr>
+            <tr><td>Sparse BM25</td><td><code>rank_bm25.BM25Okapi</code></td><td>Exact keywords, rare terms, codes</td></tr>
+            <tr><td>Hybrid (RRF)</td><td><code>hybrid_search.py</code></td><td>Best of both, no score calibration</td></tr>
+          </tbody>
+        </table>
+        <p>The <code>RetrievalAgent</code> dynamically selects:</p>
+<pre>if self.use_bm25:
+    hybrid = get_hybrid_search(client_id)  # BM25 + Vector + RRF
+else:
+    retriever = get_retriever()  # Vector-only</pre>
+        <p><strong>Dynamic switching scenarios:</strong> Queries with proper nouns/codes → BM25 excels. Semantic/conceptual queries → vector dominates. Our hybrid with <code>bm25_weight=0.4, vector_weight=0.6</code> gives vector a slight edge while preserving BM25's keyword strength.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q10">
+      <div class="qa-question" onclick="toggleQA('q10')">
+        <span class="qa-badge">Q10</span>
+        <span class="qa-question-text">How do you implement adaptive chunking, and how does chunk size impact agent reasoning?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our chunking config in <code>config.py</code>:</p>
+<pre>chunk_size: int = 1200         # Target characters
+chunk_overlap: int = 200       # Overlap between chunks
+chunk_method: str = "char"     # "char" or "token"
+respect_headings: bool = True  # Break at markdown headers
+respect_sentences: bool = True # Break at sentence boundaries
+min_chunk_tokens: int = 50     # Drop tiny chunks</pre>
+        <p><strong>Adaptive strategies:</strong></p>
+        <ol>
+          <li><strong>Heading-aware:</strong> Chunks align with markdown section headers — topically coherent</li>
+          <li><strong>Sentence-boundary respect:</strong> No mid-sentence splits that confuse reranker</li>
+          <li><strong>Content-hash IDs:</strong> Deterministic chunks enable deduplication during re-ingestion</li>
+        </ol>
+        <p><strong>Impact on reasoning:</strong> Too small (&lt;50 tokens) → lose context. Too large → dilute relevance. Our 1200 chars (~300 tokens) balances context for synthesis with precision for retrieval.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q11">
+      <div class="qa-question" onclick="toggleQA('q11')">
+        <span class="qa-badge">Q11</span>
+        <span class="qa-question-text">Explain query decomposition in agentic RAG.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Query decomposition breaks complex multi-part questions into simpler sub-queries.</p>
+        <p><strong>Our system:</strong> The <code>QueryAgent._rewrite_query()</code> performs a simpler form — it rewrites for retrieval but doesn't explicitly decompose.</p>
+        <p><strong>How full decomposition would work:</strong></p>
+        <ol>
+          <li><code>QueryAgent</code> generates multiple sub-queries from a complex question</li>
+          <li>Each sub-query goes to <code>RetrievalAgent._search_collection()</code> independently</li>
+          <li>Results merged using existing <code>_merge_results()</code> deduplication</li>
+          <li><code>SynthesisAgent</code> receives all chunks and synthesizes across them</li>
+        </ol>
+        <p>The <code>AgentState.rewritten_query</code> (currently a single string) would need to become <code>List[str]</code>.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q12">
+      <div class="qa-question" onclick="toggleQA('q12')">
+        <span class="qa-badge">Q12</span>
+        <span class="qa-question-text">What is Hypothetical Document Embedding (HyDE)?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>HyDE asks the LLM to generate a <em>hypothetical answer</em>, embeds THAT instead of the raw query, and searches with it.</p>
+        <p><strong>Why it helps:</strong> The hypothetical document is in the same "language" as indexed documents (declarative, detailed), so its embedding is closer to relevant chunks than a short question.</p>
+        <p><strong>Our system uses alternatives instead:</strong></p>
+        <ul>
+          <li><strong>Query rewriting</strong> bridges the question-document gap</li>
+          <li><strong>Hybrid search</strong> catches both semantic and lexical matches</li>
+          <li><strong>Cross-encoder reranking</strong> rescores based on joint understanding</li>
+        </ul>
+        <p>These three together achieve much of what HyDE offers <strong>without the extra LLM call</strong>.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q13">
+      <div class="qa-question" onclick="toggleQA('q13')">
+        <span class="qa-badge">Q13</span>
+        <span class="qa-question-text">How would you handle multi-hop retrieval?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Multi-hop = chaining facts across documents ("Who manages the person who signed contract X?").</p>
+        <p><strong>Current approach:</strong></p>
+        <ol>
+          <li>Retrieval Agent searches client + global, pulling from multiple documents</li>
+          <li>Synthesis Agent receives up to 6 chunks and reasons across them</li>
+          <li>The knowledge graph module (<code>graph_query.py</code>) supports traversal for entity relationships</li>
+        </ol>
+        <p><strong>For true multi-hop:</strong> Need an iterative loop (retrieve → extract intermediate → re-retrieve). The knowledge graph with entity types (<code>PERSON</code>, <code>ORG</code>, <code>DOCUMENT</code>) and relationships (<code>AUTHORED</code>, <code>REFERENCES</code>) is specifically designed for this. Enable with <code>RAG__KNOWLEDGE_GRAPH_ENABLED=true</code>.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q14">
+      <div class="qa-question" onclick="toggleQA('q14')">
+        <span class="qa-badge">Q14</span>
+        <span class="qa-question-text">Describe a re-ranking strategy after initial retrieval. How do cross-encoders fit in?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our system uses <strong>cross-encoder reranking</strong> in <code>reranker.py</code>:</p>
+        <ul>
+          <li><strong>Bi-encoders</strong> encode query and document separately — fast but less accurate</li>
+          <li><strong>Cross-encoders</strong> (<code>ms-marco-MiniLM-L-6-v2</code>, ~22M params) encode jointly — slower but significantly more accurate</li>
+          <li>We use bi-encoders for retrieval (<code>fetch_k=30</code>) and cross-encoders for reranking (<code>top_k=5</code>)</li>
+        </ul>
+        <p>Additionally: <strong>MMR (Maximal Marginal Relevance)</strong> prevents returning 5 near-duplicate chunks using Jaccard text similarity or embedding cosine similarity.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q15">
+      <div class="qa-question" onclick="toggleQA('q15')">
+        <span class="qa-badge">Q15</span>
+        <span class="qa-question-text">What is metadata filtering, and how can an agent apply filters dynamically?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Our system:</strong> Client isolation is the primary filter — separate ChromaDB collections per client (physical separation, not metadata filtering).</p>
+        <p>Chunk metadata includes: <code>client_id</code>, <code>source_filename</code>, <code>page_number</code>, <code>section_heading</code>, <code>doc_id</code>.</p>
+        <p><strong>Dynamic filtering could work by:</strong></p>
+        <ol>
+          <li><code>QueryAgent</code> extracts filter hints from query ("in the 2024 report" → <code>{"source_filename": {"$contains": "2024"}}</code>)</li>
+          <li>Pass as <code>where</code> parameter through <code>AgentState</code></li>
+          <li><code>RetrievalAgent</code> applies to both <code>vector_store.query()</code> and <code>bm25_index.search()</code></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quiz -->
+  <section class="section" id="quiz">
+    <div class="quiz">
+      <div class="quiz-title">🧪 Module 3 Quiz</div>
+
+      <div class="quiz-question" id="quiz1">
+        <div class="quiz-q-text">1. A user searches for "policy XYZ-789 renewal process". Which search method is most important?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Vector search alone — it understands the meaning of "renewal"</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Hybrid — BM25 catches "XYZ-789" (rare code), vector catches "renewal process" (semantic)</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>BM25 alone — the policy code is the most important term</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz1-exp">
+          ✅ This is why hybrid search exists! "XYZ-789" is a rare token that BM25 scores highly (TF-IDF gives rare terms high weight). "Renewal process" is a semantic concept that vector search handles well. RRF fusion combines both signals, and documents matching BOTH get the highest scores.
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz2">
+        <div class="quiz-q-text">2. Why does the system fetch 30 candidates but only return 5?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>The cross-encoder needs a larger pool to find the truly best matches — initial retrieval is fast but imprecise</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>The LLM can only process 5 chunks in its context window</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>It's a bug — ideally all 30 should be returned</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz2-exp">
+          ✅ This is the "recall then precision" pattern. Bi-encoders (step 1) are fast but less accurate — they might miss the best match at position 15. The cross-encoder (step 2) is slow but accurate — it carefully evaluates all 30 and picks the true top 5. More candidates in → better chance the best answer is included.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="module-nav">
+    <a href="module2.html">← Module 2: Multi-Agent System</a>
+    <a href="module4.html">Module 4: Vector Stores & Indexing →</a>
+  </div>
+
+</main>
+
+<script>
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = ((h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100) + '%';
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+}, { passive: true });
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.section').forEach(s => obs.observe(s));
+function toggleQA(id) { document.getElementById(id).classList.toggle('open'); }
+function checkAnswer(el, correct, expId) {
+  const p = el.closest('.quiz-question');
+  if (p.querySelector('.correct, .incorrect')) return;
+  p.querySelectorAll('.quiz-option').forEach(o => { o.style.pointerEvents = 'none'; o.style.opacity = '0.6'; });
+  el.style.opacity = '1'; el.classList.add(correct ? 'correct' : 'incorrect');
+  document.getElementById(expId).classList.add('show');
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 6: Data Pipeline & Ingestion — Agentic RAG Masterclass</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<nav class="nav" id="nav">
+  <div class="nav-brand">🤖 <span>Agentic RAG</span> Masterclass</div>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Home</a>
+    <a href="module1.html" class="nav-link">1</a>
+    <a href="module2.html" class="nav-link">2</a>
+    <a href="module3.html" class="nav-link">3</a>
+    <a href="module4.html" class="nav-link">4</a>
+    <a href="module5.html" class="nav-link">5</a>
+    <a href="module6.html" class="nav-link active">6</a>
+    <a href="module7.html" class="nav-link">7</a>
+    <a href="module8.html" class="nav-link">8</a>
+  </div>
+</nav>
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+<main>
+  <header class="module-header">
+    <div class="module-number">Module 6 of 8</div>
+    <h1 class="module-title">Data Pipeline &amp; Ingestion</h1>
+    <p class="module-subtitle">How documents are uploaded, processed, chunked, embedded, and made searchable — the supply chain of knowledge.</p>
+  </header>
+
+  <!-- Section 1: Pipeline Overview -->
+  <section class="section" id="s1">
+    <h2 class="section-title">📦 The Ingestion Pipeline End-to-End</h2>
+    <p>Think of a <strong>food processing factory</strong>: raw materials (PDFs, DOCXs) arrive at the dock, get cleaned, cut into portions (chunks), labelled with nutrition facts (metadata), and placed on shelves (ChromaDB + BM25).</p>
+
+    <div class="flow-diagram">
+      <div class="flow-node flow-node-primary">POST /documents/upload</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-secondary">Docling Processor</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-tertiary">Chunking Engine</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-warning">Embed + Hash</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-primary">ChromaDB + BM25</div>
+    </div>
+
+    <div class="callout callout-aha">
+      <div class="callout-icon">⚡</div>
+      <div class="callout-content">
+        <div class="callout-title">Hot Reload</div>
+        <div class="callout-text">Documents are <strong>immediately available</strong> after upload — no server restart, no batch job. The pipeline ingests in a single request and updates both vector and keyword indices.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: Docling -->
+  <section class="section" id="s2">
+    <h2 class="section-title">📄 Docling: The Universal Format Converter</h2>
+    <p>Imagine a translator who can read any language and write everything in one common script. Docling converts PDF, DOCX, images, and more into <strong>clean Markdown</strong>.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — docling_processor.py</div>
+<pre><span style="color: var(--code-class)">SUPPORTED_FORMATS</span> = {
+    <span style="color: var(--code-string)">'.pdf'</span>, <span style="color: var(--code-string)">'.docx'</span>, <span style="color: var(--code-string)">'.doc'</span>,
+    <span style="color: var(--code-string)">'.pptx'</span>, <span style="color: var(--code-string)">'.html'</span>, <span style="color: var(--code-string)">'.md'</span>,
+    <span style="color: var(--code-string)">'.txt'</span>, <span style="color: var(--code-string)">'.png'</span>, <span style="color: var(--code-string)">'.jpg'</span>,
+    <span style="color: var(--code-string)">'.tiff'</span>, <span style="color: var(--code-string)">'.bmp'</span>, <span style="color: var(--code-string)">'.gif'</span>,
+    <span style="color: var(--code-string)">'.webp'</span>
+}
+
+<span style="color: var(--code-comment)"># PDF pipeline with OCR</span>
+pipeline_options = <span style="color: var(--code-class)">PdfPipelineOptions</span>()
+pipeline_options.do_ocr = <span style="color: var(--code-keyword)">True</span>
+pipeline_options.accelerator_options = (
+    <span style="color: var(--code-class)">AcceleratorOptions</span>()
+)
+
+<span style="color: var(--code-comment)"># Throttle to prevent CPU saturation</span>
+<span style="color: var(--code-class)">DOCLING_NUM_THREADS</span> = <span style="color: var(--code-number)">4</span></pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>Supported input formats:</strong></div>
+        <div class="line">📕 Documents: PDF, DOCX, DOC, PPTX</div>
+        <div class="line">🌐 Web: HTML, Markdown, Plain text</div>
+        <div class="line">🖼️ Images: PNG, JPG, TIFF, BMP, GIF, WEBP</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Smart PDF handling:</strong></div>
+        <div class="line">→ OCR enabled: scanned PDFs → text</div>
+        <div class="line">→ Tables → Markdown table format</div>
+        <div class="line">→ GPU acceleration if available</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Resource management:</strong></div>
+        <div class="line">→ Max 4 threads to avoid CPU saturation</div>
+        <div class="line">→ Prevents starving the retrieval pipeline</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: Chunking -->
+  <section class="section" id="s3">
+    <h2 class="section-title">✂️ Chunking: Cutting Knowledge Into Digestible Pieces</h2>
+    <p>If you split a book by page count, you might cut a sentence in half. Our chunker is like a careful editor — it splits at <strong>headings</strong> and <strong>sentence boundaries</strong>, preserving meaning.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — config.py chunking settings</div>
+<pre><span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">ChunkingSettings</span>(BaseModel):
+    chunk_size: int = <span style="color: var(--code-number)">1000</span>
+    chunk_overlap: int = <span style="color: var(--code-number)">200</span>
+    respect_headings: bool = <span style="color: var(--code-keyword)">True</span>
+    respect_sentences: bool = <span style="color: var(--code-keyword)">True</span>
+    min_chunk_tokens: int = <span style="color: var(--code-number)">50</span>
+    use_content_hash_ids: bool = <span style="color: var(--code-keyword)">True</span></pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line">📏 <strong>chunk_size = 1000:</strong> ~1000 characters per chunk</div>
+        <div class="line">🔗 <strong>overlap = 200:</strong> 200 chars shared between adjacent chunks — like overlapping puzzle pieces, ensuring no idea falls between the cracks</div>
+        <div class="line">📑 <strong>respect_headings:</strong> Break at Markdown <code>#</code> headers. A "Refund Policy" section stays in one chunk.</div>
+        <div class="line">✍️ <strong>respect_sentences:</strong> Never cut mid-sentence. Finds the nearest period, question mark, or exclamation.</div>
+        <div class="line">🚫 <strong>min_chunk_tokens = 50:</strong> Drop tiny, meaningless chunks (e.g., a lone page number)</div>
+        <div class="line">#️⃣ <strong>content_hash_ids:</strong> ID = hash of content. Same text → same ID → automatic dedup!</div>
+      </div>
+    </div>
+
+    <div class="callout callout-pitfall">
+      <div class="callout-icon">⚠️</div>
+      <div class="callout-content">
+        <div class="callout-title">Pitfall: Chunk Size Sweet Spot</div>
+        <div class="callout-text"><strong>Too small (200 chars):</strong> Chunks lack context — "it refers to the policy" (what policy?). <strong>Too large (5000 chars):</strong> Embedding averages out meaning — the chunk is "about everything and nothing." The 1000-char default with 200-char overlap is a well-tested balance.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: Metadata -->
+  <section class="section" id="s4">
+    <h2 class="section-title">🏷️ Metadata Enrichment: The Chunk's Passport</h2>
+    <p>Every chunk carries a rich "passport" of metadata. Think of it like a library card catalog entry — it tells you where this chunk came from, what page, what section, and even what entities it mentions.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — ChunkMetadata</div>
+<pre><span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">ChunkMetadata</span>:
+    doc_id: str
+    client_id: str
+    source_filename: str
+    chunk_index: int
+    start_offset: int
+    end_offset: int
+    page_number: <span style="color: var(--code-class)">Optional</span>[int]
+    section_heading: <span style="color: var(--code-class)">Optional</span>[str]
+    embedding_fingerprint: str
+
+    <span style="color: var(--code-comment)"># Knowledge-graph ready</span>
+    detected_entities: List[Dict]
+    entity_ids: List[str]
+    semantic_type: <span style="color: var(--code-class)">Optional</span>[str]
+      <span style="color: var(--code-comment)"># "fact", "definition",</span>
+      <span style="color: var(--code-comment)"># "procedure"</span></pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">What each field does</div>
+        <div class="line">📎 <strong>doc_id, client_id:</strong> Which document, which client — for isolation</div>
+        <div class="line">📂 <strong>source_filename:</strong> Powers <code>[Source: policy.pdf]</code> citations</div>
+        <div class="line">🔢 <strong>chunk_index, offsets:</strong> Exact position within the original document</div>
+        <div class="line">📖 <strong>page_number:</strong> "See page 7" — pinpoint citation</div>
+        <div class="line">📑 <strong>section_heading:</strong> "Under Refund Policy" — topical context</div>
+        <div class="line">🔐 <strong>embedding_fingerprint:</strong> Which model created this embedding — detects model changes</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Knowledge Graph fields:</strong></div>
+        <div class="line">🧑‍🤝‍🧑 <strong>detected_entities:</strong> People, orgs, dates found in this chunk</div>
+        <div class="line">🔗 <strong>entity_ids:</strong> Links to the knowledge graph nodes</div>
+        <div class="line">🏷️ <strong>semantic_type:</strong> Is this chunk a fact? A definition? A procedure?</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Deduplication -->
+  <section class="section" id="s5">
+    <h2 class="section-title">🔄 Deduplication: No Duplicate Shelves</h2>
+
+    <div class="comparison-table">
+      <table>
+        <thead>
+          <tr><th>Level</th><th>Mechanism</th><th>How It Works</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Document-level</strong></td>
+            <td>Content-hash chunk IDs</td>
+            <td><code>hashlib</code> digest of chunk content → same text = same ID. ChromaDB <code>upsert()</code> is idempotent.</td>
+          </tr>
+          <tr>
+            <td><strong>Passage-level</strong></td>
+            <td>Cross-document hash match</td>
+            <td>Two different PDFs with the same paragraph → identical hash → stored once.</td>
+          </tr>
+          <tr>
+            <td><strong>Retrieval-level</strong></td>
+            <td><code>seen_ids = set()</code></td>
+            <td><code>_merge_results()</code> deduplicates across client + global collections.</td>
+          </tr>
+          <tr>
+            <td><strong>Diversity</strong></td>
+            <td>MMR selector</td>
+            <td>Even if IDs differ, semantically duplicate chunks are penalized by Maximal Marginal Relevance.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Interview Questions -->
+  <section class="section" id="interview">
+    <h2 class="section-title">🎤 Interview Questions: Data Pipeline</h2>
+
+    <div class="interview-qa" id="q46">
+      <div class="qa-question" onclick="toggleQA('q46')">
+        <span class="qa-badge">Q46</span>
+        <span class="qa-question-text">How do you design an ingestion pipeline that keeps the knowledge base fresh?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Freshness mechanisms in our pipeline:</p>
+        <ol>
+          <li><strong>Hot reload:</strong> Documents are immediately available after upload — no batch job or restart required.</li>
+          <li><strong>Content-hash IDs:</strong> Re-uploading a document generates the same IDs for unchanged chunks. ChromaDB's <code>upsert()</code> deduplicates automatically — only new/changed chunks are added.</li>
+          <li><strong>Dual-index sync:</strong> <code>HybridSearch.add_documents()</code> updates both BM25 and vector indices in a single call.</li>
+          <li><strong>Delete + re-add:</strong> Document updates delete old chunks by <code>doc_id</code>, then add new ones.</li>
+          <li><strong>Per-client isolation:</strong> Updating one client's documents doesn't affect others.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q47">
+      <div class="qa-question" onclick="toggleQA('q47')">
+        <span class="qa-badge">Q47</span>
+        <span class="qa-question-text">What pre-processing steps do you perform before embedding documents?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Four-stage pipeline:</p>
+        <ol>
+          <li><strong>Format conversion (Docling):</strong> PDF/DOCX/Images → clean Markdown with OCR support.</li>
+          <li><strong>Chunking:</strong> Heading-aware + sentence-boundary-respecting splits. 1000 chars with 200-char overlap. Min 50 tokens to filter noise.</li>
+          <li><strong>Metadata enrichment (ChunkMetadata):</strong> doc_id, client_id, source_filename, page_number, section_heading, embedding_fingerprint, detected_entities.</li>
+          <li><strong>Content-hash ID generation:</strong> Deterministic IDs via <code>hashlib</code> → idempotent upserts, automatic dedup.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q48">
+      <div class="qa-question" onclick="toggleQA('q48')">
+        <span class="qa-badge">Q48</span>
+        <span class="qa-question-text">How do you handle multi-modal data (tables, images, charts inside PDFs)?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Docling handles multi-modal content:</p>
+        <ol>
+          <li><strong>PDF tables:</strong> Extracted and converted to Markdown table format. The chunker's <code>respect_headings</code> keeps tables with their section context.</li>
+          <li><strong>Images in PDFs:</strong> OCR via <code>PdfPipelineOptions</code> + <code>AcceleratorOptions</code>. Supports PNG, JPG, TIFF, BMP, GIF, WEBP.</li>
+          <li><strong>Charts:</strong> Text (labels, legends, titles) extracted via OCR. Chart interpretation limited to extractable text.</li>
+          <li><strong>Vision-language model:</strong> Default LLM is <code>Qwen3-VL-30B-Instruct</code> — the "-VL" indicates future image understanding capabilities.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q49">
+      <div class="qa-question" onclick="toggleQA('q49')">
+        <span class="qa-badge">Q49</span>
+        <span class="qa-question-text">Describe your approach to document-level and passage-level deduplication.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Document-level:</strong> Content-hash chunk IDs (<code>hashlib</code>) → re-uploading produces identical IDs → <code>upsert()</code> is idempotent.</p>
+        <p><strong>Passage-level:</strong> Two chunks from different documents with identical text → same hash ID → stored once. At retrieval, <code>_merge_results()</code> uses <code>seen_ids = set()</code> to deduplicate across client and global collections.</p>
+        <p><strong>Why it matters:</strong> Without dedup, the same passage consumes multiple top-K slots, reducing diversity. MMR further penalizes semantically similar chunks.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q50">
+      <div class="qa-question" onclick="toggleQA('q50')">
+        <span class="qa-badge">Q50</span>
+        <span class="qa-question-text">How do you detect and handle data drift in the knowledge base?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Detection:</strong></p>
+        <ol>
+          <li><strong>Embedding fingerprinting:</strong> <code>EmbeddingFingerprint</code> detects model changes that cause drift between old and new embeddings.</li>
+          <li><strong>Retrieval quality monitoring:</strong> <code>HybridSearchResult</code> stats track candidate counts — a drop in candidates suggests index drift.</li>
+          <li><strong>LangSmith trends:</strong> Monitoring answer quality over time surfaces gradual degradation.</li>
+        </ol>
+        <p><strong>Handling:</strong></p>
+        <ol>
+          <li><strong>Timestamp metadata:</strong> <code>uploaded_at</code> enables recency-based filtering.</li>
+          <li><strong>Idempotent re-ingestion:</strong> Content-hash IDs make periodic re-ingestion safe.</li>
+          <li><strong>BM25 index rebuild:</strong> Full rebuild recalibrates term frequencies for the current corpus.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quiz -->
+  <section class="section" id="quiz">
+    <div class="quiz">
+      <div class="quiz-title">🧪 Module 6 Quiz</div>
+
+      <div class="quiz-question" id="quiz1">
+        <div class="quiz-q-text">1. You upload the same PDF twice. What happens the second time?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Duplicate chunks are created — the collection doubles in size</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Content-hash IDs are identical, so ChromaDB's upsert() silently deduplicates — no change in collection size</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>An error is thrown rejecting the duplicate upload</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz1-exp">
+          ✅ Because <code>use_content_hash_ids = True</code>, chunk IDs are derived from the content itself via <code>hashlib</code>. Re-uploading the same document generates the same IDs, and ChromaDB's <code>upsert()</code> is idempotent — it simply overwrites with identical data.
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz2">
+        <div class="quiz-q-text">2. Why does the chunker use 200 characters of overlap between adjacent chunks?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>To make chunks larger for better embeddings</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>To increase the total number of chunks for better BM25</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>To ensure no idea falls between chunk boundaries — context at the edges is preserved in both adjacent chunks</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz2-exp">
+          ✅ The 200-char overlap is like overlapping puzzle pieces. If an important concept spans the boundary between two chunks, the overlap ensures it appears (at least partially) in both chunks, so retrieval can find it regardless of which chunk matches the query.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="module-nav">
+    <a href="module5.html">← Module 5: Memory & Prompts</a>
+    <a href="module7.html">Module 7: Production & Scale →</a>
+  </div>
+</main>
+
+<script>
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = ((h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100) + '%';
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+}, { passive: true });
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.section').forEach(s => obs.observe(s));
+function toggleQA(id) { document.getElementById(id).classList.toggle('open'); }
+function checkAnswer(el, correct, expId) {
+  const p = el.closest('.quiz-question');
+  if (p.querySelector('.correct, .incorrect')) return;
+  p.querySelectorAll('.quiz-option').forEach(o => { o.style.pointerEvents = 'none'; o.style.opacity = '0.6'; });
+  el.style.opacity = '1'; el.classList.add(correct ? 'correct' : 'incorrect');
+  document.getElementById(expId).classList.add('show');
+}
+</script>
+</body>
+</html>

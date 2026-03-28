@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 2: The Multi-Agent System — Agentic RAG Masterclass</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="nav-brand">🤖 <span>Agentic RAG</span> Masterclass</div>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Home</a>
+    <a href="module1.html" class="nav-link">1</a>
+    <a href="module2.html" class="nav-link active">2</a>
+    <a href="module3.html" class="nav-link">3</a>
+    <a href="module4.html" class="nav-link">4</a>
+    <a href="module5.html" class="nav-link">5</a>
+    <a href="module6.html" class="nav-link">6</a>
+    <a href="module7.html" class="nav-link">7</a>
+    <a href="module8.html" class="nav-link">8</a>
+  </div>
+</nav>
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+<main>
+
+  <header class="module-header">
+    <div class="module-number">Module 2 of 8</div>
+    <h1 class="module-title">The Multi-Agent System</h1>
+    <p class="module-subtitle">Meet the four agents, understand shared state, and see how the orchestrator conducts the orchestra.</p>
+  </header>
+
+  <!-- Section 1: Meet the Actors -->
+  <section class="section" id="s1">
+    <h2 class="section-title">🎭 Meet the Cast of Characters</h2>
+    <p>Think of this system like a <strong>hospital emergency room</strong>. A patient walks in (the user's question). They don't go straight to surgery — first, a triage nurse decides what they need.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">🔮</div>
+        <div class="card-title">Query Agent <span class="tag tag-accent">Triage</span></div>
+        <div class="card-text">The first responder. Looks at every incoming message and decides: Is this chitchat? A question? A math problem? A request to list documents? Then rewrites the query to be more searchable.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔍</div>
+        <div class="card-title">Retrieval Agent <span class="tag tag-info">Search Team</span></div>
+        <div class="card-text">The research librarian. Searches both the client's private documents AND the global shared documents. Uses BM25 + vector search, fuses with RRF, reranks with a cross-encoder.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔧</div>
+        <div class="card-title">Tool Agent <span class="tag tag-warning">Specialist</span></div>
+        <div class="card-text">The on-call specialist. Handles specific tasks like calculations (<code>SafeCalculator</code>) and datetime queries. Uses a shunting-yard algorithm — never <code>eval()</code>.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">✍️</div>
+        <div class="card-title">Synthesis Agent <span class="tag tag-success">Doctor</span></div>
+        <div class="card-text">The doctor who delivers the final answer. Takes all the evidence (retrieved docs, tool results, conversation context) and generates a cited, formatted response.</div>
+      </div>
+    </div>
+
+    <div class="callout callout-aha">
+      <div class="callout-icon">💡</div>
+      <div class="callout-content">
+        <div class="callout-title">Aha! Agents ≠ Autonomous AI</div>
+        <div class="callout-text">In this context, "agent" doesn't mean a sentient AI. It means a <strong>specialized function with a clear job</strong> that receives state, processes it, and returns updated state. Like a factory assembly line — each station does one thing well.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: Shared State -->
+  <section class="section" id="s2">
+    <h2 class="section-title">📋 The Shared Clipboard: AgentState</h2>
+    <p>All four agents read from and write to one shared object — <code>AgentState</code>. Think of it like a <strong>medical chart</strong> that gets passed from triage to lab to doctor. Each adds their notes.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — state.py</div>
+<pre><span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">AgentState</span>(TypedDict, total=False):
+    <span style="color: var(--code-comment)"># Input</span>
+    message: str
+    client_id: str
+    conversation_id: str
+
+    <span style="color: var(--code-comment)"># Memory</span>
+    conversation_summary: str
+    recent_messages: List[Dict]
+
+    <span style="color: var(--code-comment)"># Query Processing</span>
+    intent: str
+    needs_retrieval: bool
+    rewritten_query: str
+
+    <span style="color: var(--code-comment)"># Retrieval</span>
+    retrieved_chunks: List[RetrievalHit]
+
+    <span style="color: var(--code-comment)"># Tools</span>
+    tool_name: Optional[str]
+    tool_result: Optional[str]
+
+    <span style="color: var(--code-comment)"># Output</span>
+    response: str
+    sources: List[Dict]</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>The shared clipboard has these sections:</strong></div>
+        <div class="line">&nbsp;</div>
+        <div class="line">📥 <strong>INPUT</strong> — What the user said, who they are</div>
+        <div class="line">→ The user's message</div>
+        <div class="line">→ Which client they belong to</div>
+        <div class="line">→ Which conversation this is</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🧠 <strong>MEMORY</strong> — What we remember</div>
+        <div class="line">→ Summary of earlier conversation</div>
+        <div class="line">→ Last few messages (sliding window)</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🔮 <strong>QUERY AGENT WRITES:</strong></div>
+        <div class="line">→ Intent: "question", "chitchat", "tool", etc.</div>
+        <div class="line">→ Does it need document search? true/false</div>
+        <div class="line">→ The improved version of the query</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🔍 <strong>RETRIEVAL AGENT WRITES:</strong></div>
+        <div class="line">→ The document chunks it found</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🔧 <strong>TOOL AGENT WRITES:</strong></div>
+        <div class="line">→ Which tool was used + its result</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">✍️ <strong>SYNTHESIS AGENT WRITES:</strong></div>
+        <div class="line">→ The final answer + cited sources</div>
+      </div>
+    </div>
+
+    <div class="callout callout-info">
+      <div class="callout-icon">🔑</div>
+      <div class="callout-content">
+        <div class="callout-title">Why <code>total=False</code>?</div>
+        <div class="callout-text">The <code>total=False</code> in <code>TypedDict</code> makes every field optional. This is crucial because each agent only updates <em>its own</em> fields. The Query Agent doesn't write <code>retrieved_chunks</code>, and the Retrieval Agent doesn't write <code>intent</code>. Partial updates to shared state.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: The Orchestrator -->
+  <section class="section" id="s3">
+    <h2 class="section-title">🎼 The Orchestrator: LangGraph in Action</h2>
+    <p>The Orchestrator is the <strong>conductor</strong> of this orchestra. It decides the order agents play in, using a <strong>StateGraph</strong> — a directed graph where nodes are agents and edges are transitions.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — orchestrator.py</div>
+<pre><span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">_build_graph</span>(self) -> StateGraph:
+    graph = StateGraph(AgentState)
+
+    <span style="color: var(--code-comment)"># Add nodes (agents)</span>
+    graph.add_node(<span style="color: var(--code-string)">"query"</span>, self._query_node)
+    graph.add_node(<span style="color: var(--code-string)">"retrieval"</span>, self._retrieval_node)
+    graph.add_node(<span style="color: var(--code-string)">"tool"</span>, self._tool_node)
+    graph.add_node(<span style="color: var(--code-string)">"synthesis"</span>, self._synthesis_node)
+    graph.add_node(<span style="color: var(--code-string)">"document_list"</span>,
+                   self._document_list_node)
+
+    <span style="color: var(--code-comment)"># Entry point</span>
+    graph.set_entry_point(<span style="color: var(--code-string)">"query"</span>)
+
+    <span style="color: var(--code-comment)"># Conditional routing</span>
+    graph.add_conditional_edges(
+        <span style="color: var(--code-string)">"query"</span>,
+        self._route_after_query,
+        {<span style="color: var(--code-string)">"tool"</span>: <span style="color: var(--code-string)">"tool"</span>,
+         <span style="color: var(--code-string)">"retrieval"</span>: <span style="color: var(--code-string)">"retrieval"</span>,
+         <span style="color: var(--code-string)">"synthesis"</span>: <span style="color: var(--code-string)">"synthesis"</span>,
+         <span style="color: var(--code-string)">"document_list"</span>: <span style="color: var(--code-string)">"document_list"</span>})
+
+    graph.add_edge(<span style="color: var(--code-string)">"tool"</span>, <span style="color: var(--code-string)">"synthesis"</span>)
+    graph.add_edge(<span style="color: var(--code-string)">"retrieval"</span>, <span style="color: var(--code-string)">"synthesis"</span>)
+    graph.add_edge(<span style="color: var(--code-string)">"synthesis"</span>, END)
+
+    <span style="color: var(--code-keyword)">return</span> graph.compile()</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>Build the workflow graph:</strong></div>
+        <div class="line">Create a new graph that passes AgentState around</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Register all the workers (nodes):</strong></div>
+        <div class="line">→ "query" — the triage nurse</div>
+        <div class="line">→ "retrieval" — the research team</div>
+        <div class="line">→ "tool" — the specialist</div>
+        <div class="line">→ "synthesis" — the doctor</div>
+        <div class="line">→ "document_list" — the file clerk</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Every request starts at "query"</strong></div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>After query, route based on what it found:</strong></div>
+        <div class="line">→ Tool detected? Go to tool agent</div>
+        <div class="line">→ Needs doc search? Go to retrieval</div>
+        <div class="line">→ Just chitchat? Go straight to synthesis</div>
+        <div class="line">→ Wants doc list? Go to document_list</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>After tool/retrieval → always go to synthesis</strong></div>
+        <div class="line"><strong>After synthesis → we're done! (END)</strong></div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><em>Compile it into an executable graph</em></div>
+      </div>
+    </div>
+
+    <!-- Visual Flow -->
+    <div class="flow-diagram">
+      <div class="flow-node flow-node-primary">🔮 Query Agent</div>
+      <div class="flow-arrow">→</div>
+      <div style="display: flex; flex-direction: column; gap: var(--space-sm); align-items: center;">
+        <div class="flow-label">routes to one of:</div>
+        <div class="flow-node flow-node-secondary">🔍 Retrieval</div>
+        <div class="flow-node flow-node-warning">🔧 Tool</div>
+        <div class="flow-node flow-node-muted">📋 Doc List</div>
+        <div class="flow-node flow-node-muted">💬 (skip)</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-tertiary">✍️ Synthesis</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-muted">🏁 END</div>
+    </div>
+  </section>
+
+  <!-- Section 4: The Router -->
+  <section class="section" id="s4">
+    <h2 class="section-title">🔀 The Router: How Decisions Are Made</h2>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — orchestrator.py</div>
+<pre><span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">_route_after_query</span>(self, state):
+    <span style="color: var(--code-comment)"># Check for tool usage</span>
+    <span style="color: var(--code-keyword)">if</span> state.get(<span style="color: var(--code-string)">"tool_name"</span>):
+        <span style="color: var(--code-keyword)">return</span> <span style="color: var(--code-string)">"tool"</span>
+
+    intent = state.get(<span style="color: var(--code-string)">"intent"</span>, <span style="color: var(--code-string)">"question"</span>)
+
+    <span style="color: var(--code-keyword)">if</span> intent == <span style="color: var(--code-string)">"chitchat"</span>:
+        <span style="color: var(--code-keyword)">return</span> <span style="color: var(--code-string)">"synthesis"</span>
+    <span style="color: var(--code-keyword)">if</span> intent == <span style="color: var(--code-string)">"document_list"</span>:
+        <span style="color: var(--code-keyword)">return</span> <span style="color: var(--code-string)">"document_list"</span>
+    <span style="color: var(--code-keyword)">if</span> state.get(<span style="color: var(--code-string)">"needs_retrieval"</span>, True):
+        <span style="color: var(--code-keyword)">return</span> <span style="color: var(--code-string)">"retrieval"</span>
+
+    <span style="color: var(--code-keyword)">return</span> <span style="color: var(--code-string)">"synthesis"</span></pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>After the Query Agent has analyzed the message:</strong></div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🔧 <strong>First check:</strong> Did it detect a tool?</div>
+        <div class="line">→ Yes? Send to Tool Agent (math, datetime)</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">Read what the Query Agent classified the intent as</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">💬 <strong>Chitchat?</strong> Skip retrieval, go straight to answer</div>
+        <div class="line">📋 <strong>Wants doc list?</strong> Go to the file clerk</div>
+        <div class="line">🔍 <strong>Needs documents?</strong> Go to Retrieval Agent</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🤷 <strong>Anything else?</strong> Default to synthesis</div>
+        <div class="line"><em>Simple, predictable, debuggable!</em></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Query Agent Deep Dive -->
+  <section class="section" id="s5">
+    <h2 class="section-title">🔮 Deep Dive: The Query Agent</h2>
+
+    <p>The Query Agent does three things in sequence: <strong>classify</strong>, <strong>detect tools</strong>, <strong>rewrite</strong>.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — query_agent.py</div>
+<pre><span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">process</span>(self, state):
+    message = state.get(<span style="color: var(--code-string)">"message"</span>, <span style="color: var(--code-string)">""</span>)
+    summary = state.get(<span style="color: var(--code-string)">"conversation_summary"</span>)
+
+    <span style="color: var(--code-comment)"># Step 1: Classify intent via LLM</span>
+    intent, needs_retrieval = \
+        <span style="color: var(--code-keyword)">await</span> self._classify_intent(
+            message, summary)
+
+    <span style="color: var(--code-comment)"># Step 2: Detect tools (overrides LLM)</span>
+    tool_name, tool_params = \
+        self._detect_tool(message)
+    <span style="color: var(--code-keyword)">if</span> tool_name:
+        intent = <span style="color: var(--code-string)">"tool"</span>
+        needs_retrieval = False
+
+    <span style="color: var(--code-comment)"># Step 3: Rewrite if retrieval needed</span>
+    rewritten = message
+    <span style="color: var(--code-keyword)">if</span> needs_retrieval:
+        rewritten = <span style="color: var(--code-keyword)">await</span> self._rewrite_query(
+            message, summary)
+
+    <span style="color: var(--code-keyword)">return</span> {**state,
+        <span style="color: var(--code-string)">"intent"</span>: intent,
+        <span style="color: var(--code-string)">"needs_retrieval"</span>: needs_retrieval,
+        <span style="color: var(--code-string)">"tool_name"</span>: tool_name,
+        <span style="color: var(--code-string)">"rewritten_query"</span>: rewritten}</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>When a message arrives at Query Agent:</strong></div>
+        <div class="line">Read what the user said + any conversation history</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">📋 <strong>Step 1: Ask the LLM "what kind of message is this?"</strong></div>
+        <div class="line">→ Returns: intent (chitchat/question/tool/etc.)</div>
+        <div class="line">→ Returns: does it need document search? (true/false)</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🔧 <strong>Step 2: Check for tools using regex patterns</strong></div>
+        <div class="line">→ Found a math expression? Override to "tool"</div>
+        <div class="line">→ Pattern matching is faster and more reliable than LLM for this</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">✏️ <strong>Step 3: If search is needed, improve the query</strong></div>
+        <div class="line">→ "Can you tell me about the refund thing we discussed?"</div>
+        <div class="line">→ Becomes: "refund policy details" (standalone, searchable)</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Write all findings to the shared clipboard</strong></div>
+        <div class="line"><em>The <code>{**state, ...}</code> pattern merges new data into existing state</em></div>
+      </div>
+    </div>
+
+    <div class="callout callout-aha">
+      <div class="callout-icon">💡</div>
+      <div class="callout-content">
+        <div class="callout-title">Aha! Two-Layer Tool Detection</div>
+        <div class="callout-text">The system uses <strong>pattern matching first</strong> (fast, reliable regex for "15% of 200"), then <strong>LLM as fallback</strong>. This is a common production pattern: cheap/fast first, expensive/smart second. The pattern match can <em>override</em> the LLM's classification because regex is more deterministic for structured inputs.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 6: LangSmith Tracing -->
+  <section class="section" id="s6">
+    <h2 class="section-title">🔭 Observability: Tracing Every Step</h2>
+    <p>Every agent is wrapped with <code>@traceable</code> — a LangSmith decorator that records inputs, outputs, timing, and token usage.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — orchestrator.py</div>
+<pre><span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"agent.query"</span>)
+<span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">_query_node</span>(self, state):
+    <span style="color: var(--code-keyword)">return await</span> self.query_agent.process(state)
+
+<span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"agent.retrieval"</span>)
+<span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">_retrieval_node</span>(self, state):
+    <span style="color: var(--code-keyword)">return await</span> self.retrieval_agent.process(state)
+
+<span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"agent.synthesis"</span>)
+<span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">_synthesis_node</span>(self, state):
+    <span style="color: var(--code-keyword)">return await</span> self.synthesis_agent.process(state)</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>Each agent call is wrapped with a tracer:</strong></div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🏷️ <strong>"agent.query"</strong> — traces the entire Query Agent</div>
+        <div class="line">→ LangSmith records: inputs, outputs, duration, tokens</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🏷️ <strong>"agent.retrieval"</strong> — traces document search</div>
+        <div class="line">→ Shows which collections were searched, how many results</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🏷️ <strong>"agent.synthesis"</strong> — traces response generation</div>
+        <div class="line">→ Shows the full prompt sent to the LLM, the response</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><em>When something goes wrong, you can see EXACTLY</em></div>
+        <div class="line"><em>which step failed and why — like a flight recorder.</em></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interview Questions -->
+  <section class="section" id="interview">
+    <h2 class="section-title">🎤 Interview Questions: Agent Reasoning & Planning</h2>
+
+    <div class="interview-qa" id="q21">
+      <div class="qa-question" onclick="toggleQA('q21')">
+        <span class="qa-badge">Q21</span>
+        <span class="qa-question-text">How do you implement a "reflection" step where the agent evaluates whether retrieved context is sufficient?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>In our system, reflection is <strong>implicit</strong> in the Synthesis Agent:</p>
+        <ul>
+          <li>If <code>retrieved_chunks</code> is empty, the prompt explicitly states "No relevant documents found."</li>
+          <li>The system prompt instructs: <em>"If the context doesn't contain enough information, say so clearly."</em></li>
+          <li>Source attribution (<code>[Source: filename]</code>) forces the agent to verify claims against evidence</li>
+        </ul>
+        <p><strong>For explicit reflection:</strong> Add a "reflection" node in LangGraph between retrieval and synthesis that evaluates relevance scores from <code>RetrievalHit.score</code> and <code>rerank_score</code> metadata.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q22">
+      <div class="qa-question" onclick="toggleQA('q22')">
+        <span class="qa-badge">Q22</span>
+        <span class="qa-question-text">How do you build an agent that decides at runtime whether to retrieve, call an API, query SQL, or respond from parametric memory?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>This is <strong>exactly what our system does</strong> (minus SQL). The <code>QueryAgent.process()</code> makes runtime decisions:</p>
+<pre>intent, needs_retrieval = await self._classify_intent(message)
+tool_name, tool_params = self._detect_tool(message)
+if tool_name:
+    intent = "tool"
+    needs_retrieval = False</pre>
+        <p>The orchestrator then routes:</p>
+        <table class="comparison-table">
+          <thead><tr><th>Decision</th><th>Route</th><th>Example</th></tr></thead>
+          <tbody>
+            <tr><td><code>tool_name</code> set</td><td>ToolAgent</td><td>"What is 15% of 200?"</td></tr>
+            <tr><td><code>intent == "chitchat"</code></td><td>SynthesisAgent (parametric)</td><td>"Hello!"</td></tr>
+            <tr><td><code>intent == "document_list"</code></td><td>Document list node</td><td>"What documents do I have?"</td></tr>
+            <tr><td><code>needs_retrieval == True</code></td><td>RetrievalAgent → Synthesis</td><td>"What is the refund policy?"</td></tr>
+          </tbody>
+        </table>
+        <p><strong>Adding SQL:</strong> Create a <code>sql_query</code> tool in <code>_detect_tool()</code>, add a SQL executor to <code>ToolAgent</code>, and the existing routing handles the rest.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q23">
+      <div class="qa-question" onclick="toggleQA('q23')">
+        <span class="qa-badge">Q23</span>
+        <span class="qa-question-text">What is chain-of-thought prompting in an agentic context, and how do you ensure the reasoning trace stays grounded?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Grounding is ensured through our agent pipeline structure:</strong></p>
+        <ol>
+          <li><strong>Structured reasoning:</strong> Instead of one big CoT prompt, reasoning is decomposed — <code>QueryAgent</code> outputs JSON (<code>{"intent": "...", "needs_retrieval": ...}</code>), <code>RetrievalAgent</code> adds source metadata, <code>SynthesisAgent</code> cites sources</li>
+          <li><strong>LangSmith tracing:</strong> Every step traced with <code>@traceable</code> — full reasoning trail without embedding it in prompts</li>
+          <li><strong>Low temperature classification:</strong> <code>temperature=0.1</code> for deterministic intent classification</li>
+          <li><strong>Structured prompt layout:</strong> <code>[conversation context] + [document context] + [tool results] + [question]</code></li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q24">
+      <div class="qa-question" onclick="toggleQA('q24')">
+        <span class="qa-badge">Q24</span>
+        <span class="qa-question-text">How do you prevent an agent from entering infinite retrieval loops?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our system prevents this through several mechanisms:</p>
+        <ol>
+          <li><strong><code>max_steps = 10</code></strong> — limits total graph traversals</li>
+          <li><strong>DAG structure (no cycles):</strong> The LangGraph is a directed acyclic graph: <code>query → [retrieval|tool|doc_list] → synthesis → END</code>. Infinite loops are structurally impossible.</li>
+          <li><strong>Intent-based routing:</strong> <code>_route_after_query()</code> always terminates at one of: <code>"tool"</code>, <code>"retrieval"</code>, <code>"synthesis"</code>, or <code>"document_list"</code>. No "retry" option.</li>
+          <li><strong>Exception handling:</strong> The orchestrator wraps execution in try/except, returning a fallback response on error</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q25">
+      <div class="qa-question" onclick="toggleQA('q25')">
+        <span class="qa-badge">Q25</span>
+        <span class="qa-question-text">Explain "tool selection" in agentic RAG — how does the LLM decide which tool to invoke?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Tool selection happens in <strong>two layers</strong>:</p>
+        <p><strong>Layer 1 — Pattern matching (fast, reliable):</strong></p>
+<pre>def _detect_tool(self, message):
+    math_pattern = r'[\d\.\s\+\-\*\/\(\)\^%]+'
+    percent_pattern = r'(\d+)\s*%\s*of\s*(\d+)'
+    datetime_keywords = ["date", "time", "today"]</pre>
+        <p><strong>Layer 2 — LLM classification (fallback):</strong> The intent classifier can output <code>"tool"</code> intent, but explicit pattern matching overrides for reliability.</p>
+        <p><strong>Why two layers:</strong> Pattern matching is O(n) regex with no LLM call needed. <code>SafeCalculator</code> uses a shunting-yard algorithm (no <code>eval()</code>!), rejecting suspicious input like <code>import</code>, <code>exec</code>, <code>__</code>.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q26">
+      <div class="qa-question" onclick="toggleQA('q26')">
+        <span class="qa-badge">Q26</span>
+        <span class="qa-question-text">How do you handle conflicting information from multiple sources?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our system retrieves from <strong>two collections</strong> (client + global) and handles conflicts:</p>
+        <ol>
+          <li><strong>Client priority:</strong> <code>_merge_results()</code> adds client results first. Client-specific docs take precedence.</li>
+          <li><strong>Deduplication:</strong> <code>seen_ids = set()</code> prevents the same chunk appearing twice</li>
+          <li><strong>Source attribution:</strong> Citations (<code>[Source: filename]</code>) let users see which source each claim comes from</li>
+          <li><strong>Multi-source context:</strong> The synthesis agent can present conflicting views: <em>"According to [Source: policy-2024], X. However, [Source: policy-2023] states Y."</em></li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q27">
+      <div class="qa-question" onclick="toggleQA('q27')">
+        <span class="qa-badge">Q27</span>
+        <span class="qa-question-text">What techniques give the agent "memory" of prior interactions in multi-turn RAG?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our memory system has multiple layers:</p>
+        <ol>
+          <li><strong>Session Buffer:</strong> Redis lists with 24h TTL, circuit breaker fallback to in-memory</li>
+          <li><strong>Auto-Summarization:</strong> When tokens exceed 4000, older messages are summarized by LLM and stored in Redis</li>
+          <li><strong>Sliding Window:</strong> 10 recent messages kept in full; older ones compressed into summary</li>
+          <li><strong>Memory in agent state:</strong> <code>conversation_summary</code> + <code>recent_messages</code> flow through all agents</li>
+          <li><strong>Query rewriting with context:</strong> The <code>QueryAgent</code> receives conversation summary to resolve references like "tell me more about that"</li>
+        </ol>
+        <table class="comparison-table">
+          <thead><tr><th>Data</th><th>Storage</th><th>TTL</th></tr></thead>
+          <tbody>
+            <tr><td>Session messages</td><td>Redis list</td><td>24 hours</td></tr>
+            <tr><td>Conversation summary</td><td>Redis string</td><td>24 hours</td></tr>
+            <tr><td>Session metadata</td><td>Redis hash</td><td>24 hours</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quiz -->
+  <section class="section" id="quiz">
+    <div class="quiz">
+      <div class="quiz-title">🧪 Module 2 Quiz</div>
+
+      <div class="quiz-question" id="quiz1">
+        <div class="quiz-q-text">1. A user asks "What is 25% of 340?" — trace the path through the agents.</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Query Agent → Retrieval Agent → Synthesis Agent</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Query Agent (detects "%" pattern → tool) → Tool Agent (SafeCalculator) → Synthesis Agent</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Query Agent → Synthesis Agent (LLM does the math itself)</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz1-exp">
+          ✅ The <code>_detect_tool()</code> regex catches the "25% of 340" pattern, sets <code>tool_name="calculator"</code>, which overrides intent to "tool" and sets <code>needs_retrieval=false</code>. The orchestrator routes to Tool Agent, which uses the <code>SafeCalculator</code> (shunting-yard algorithm, never eval!) to compute 85.0. The result flows to Synthesis Agent for a natural response.
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz2">
+        <div class="quiz-q-text">2. Why does <code>AgentState</code> use <code>total=False</code> in its TypedDict?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>It's a Python bug workaround for LangGraph compatibility</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>Each agent only writes its own fields — partial state updates need all fields to be optional</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>It makes the state object immutable for thread safety</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz2-exp">
+          ✅ With <code>total=False</code>, an agent can return <code>{**state, "intent": "question"}</code> without providing all other fields. The Query Agent doesn't set <code>retrieved_chunks</code>, and the Retrieval Agent doesn't set <code>intent</code>. Each agent is responsible only for its own fields — clean separation of concerns.
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz3">
+        <div class="quiz-q-text">3. The user asks "Show me my uploaded documents." Which path does this take?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz3-exp')">
+            <div class="quiz-radio"></div>
+            <div>Query Agent → Retrieval Agent (searches for "documents") → Synthesis Agent</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz3-exp')">
+            <div class="quiz-radio"></div>
+            <div>Query Agent → Synthesis Agent (generates list from memory)</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz3-exp')">
+            <div class="quiz-radio"></div>
+            <div>Query Agent (classifies as "document_list") → Document List Node (reads ChromaDB metadata) → END</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz3-exp">
+          ✅ The intent classifier distinguishes between "I want to know WHAT docs exist" (<code>document_list</code>) and "I want information FROM docs" (<code>question</code>). The <code>_document_list_node</code> reads collection metadata from both client and global ChromaDB collections, formats it, and returns directly — no synthesis agent needed!
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="module-nav">
+    <a href="module1.html">← Module 1: Foundations</a>
+    <a href="module3.html">Module 3: Retrieval Strategies →</a>
+  </div>
+
+</main>
+
+<script>
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = ((h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100) + '%';
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+}, { passive: true });
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.section').forEach(s => obs.observe(s));
+function toggleQA(id) { document.getElementById(id).classList.toggle('open'); }
+function checkAnswer(el, correct, expId) {
+  const p = el.closest('.quiz-question');
+  if (p.querySelector('.correct, .incorrect')) return;
+  p.querySelectorAll('.quiz-option').forEach(o => { o.style.pointerEvents = 'none'; o.style.opacity = '0.6'; });
+  el.style.opacity = '1'; el.classList.add(correct ? 'correct' : 'incorrect');
+  document.getElementById(expId).classList.add('show');
+}
+</script>
+
+</body>
+</html>

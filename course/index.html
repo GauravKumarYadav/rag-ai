@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agentic RAG Masterclass — Interactive Course</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .index-section { margin-bottom: var(--space-4xl); }
+    .index-section-title {
+      font-family: var(--font-heading);
+      font-weight: 700;
+      font-size: var(--text-2xl);
+      margin-bottom: var(--space-lg);
+      color: var(--text-primary);
+    }
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: var(--space-md);
+    }
+    .tech-item {
+      background: var(--surface);
+      border: var(--border-light);
+      border-radius: var(--radius-md);
+      padding: var(--space-lg);
+      text-align: center;
+      transition: all var(--transition-fast);
+    }
+    .tech-item:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+    .tech-icon { font-size: 2rem; margin-bottom: var(--space-sm); }
+    .tech-name { font-weight: 700; font-size: var(--text-sm); }
+    .tech-role { font-size: var(--text-xs); color: var(--text-tertiary); }
+    .footer {
+      text-align: center;
+      padding: var(--space-3xl);
+      color: var(--text-tertiary);
+      font-size: var(--text-sm);
+      border-top: var(--border-light);
+      margin-top: var(--space-4xl);
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav" id="nav">
+  <div class="nav-brand">🤖 <span>Agentic RAG</span> Masterclass</div>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link active">Home</a>
+    <a href="module1.html" class="nav-link">1</a>
+    <a href="module2.html" class="nav-link">2</a>
+    <a href="module3.html" class="nav-link">3</a>
+    <a href="module4.html" class="nav-link">4</a>
+    <a href="module5.html" class="nav-link">5</a>
+    <a href="module6.html" class="nav-link">6</a>
+    <a href="module7.html" class="nav-link">7</a>
+    <a href="module8.html" class="nav-link">8</a>
+  </div>
+</nav>
+
+<main>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">🎓 Interactive Course + Interview Prep</div>
+    <h1 class="hero-title">Master <span>Agentic RAG</span><br>From Code to Interview</h1>
+    <p class="hero-subtitle">
+      Learn how a production multi-agent RAG chatbot works — from architecture to deployment.
+      Includes 65 interview questions with detailed, codebase-grounded answers.
+    </p>
+    <div class="hero-stats">
+      <div class="stat">
+        <div class="stat-number">8</div>
+        <div class="stat-label">Modules</div>
+      </div>
+      <div class="stat">
+        <div class="stat-number">65</div>
+        <div class="stat-label">Interview Q&As</div>
+      </div>
+      <div class="stat">
+        <div class="stat-number">10</div>
+        <div class="stat-label">Topics</div>
+      </div>
+      <div class="stat">
+        <div class="stat-number">40+</div>
+        <div class="stat-label">Code Walkthroughs</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- What You'll Learn -->
+  <section class="index-section">
+    <h2 class="index-section-title">What This App Does</h2>
+    <p style="color: var(--text-secondary); font-size: var(--text-lg); max-width: 800px; margin-bottom: var(--space-xl);">
+      This course is built around a <strong>real, production-grade Agentic RAG chatbot</strong> — a system
+      where an AI doesn't just generate answers, it <em>decides how to find them</em>. It routes questions
+      to specialized agents, searches multiple document collections, reranks results, manages memory,
+      and cites its sources — all orchestrated by a LangGraph state machine.
+    </p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">🧠</div>
+        <div class="card-title">Multi-Agent Architecture</div>
+        <div class="card-text">4 specialized agents (Query, Retrieval, Tool, Synthesis) coordinated by a LangGraph orchestrator that routes based on intent.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔍</div>
+        <div class="card-title">Hybrid Search</div>
+        <div class="card-text">BM25 keyword search + vector semantic search fused with Reciprocal Rank Fusion, then reranked by a cross-encoder.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🏢</div>
+        <div class="card-title">Client Isolation</div>
+        <div class="card-text">Per-client document collections with physical separation in ChromaDB. Global documents available to all.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">💬</div>
+        <div class="card-title">Smart Memory</div>
+        <div class="card-text">Redis-backed session buffer with auto-summarization when conversations get long. Circuit breaker for resilience.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📊</div>
+        <div class="card-title">Full Observability</div>
+        <div class="card-text">Every agent step traced in LangSmith. Cost tracking, structured JSON logging, and correlation IDs.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔌</div>
+        <div class="card-title">Multi-Provider LLM</div>
+        <div class="card-text">Supports LM Studio, Ollama, Groq, OpenAI, or any OpenAI-compatible endpoint. Switch with one config change.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tech Stack -->
+  <section class="index-section">
+    <h2 class="index-section-title">Tech Stack</h2>
+    <div class="tech-grid">
+      <div class="tech-item">
+        <div class="tech-icon">🦜</div>
+        <div class="tech-name">LangGraph</div>
+        <div class="tech-role">Agent Orchestration</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-icon">⚡</div>
+        <div class="tech-name">FastAPI</div>
+        <div class="tech-role">REST + WebSocket API</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-icon">🧬</div>
+        <div class="tech-name">ChromaDB</div>
+        <div class="tech-role">Vector Store</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-icon">🔴</div>
+        <div class="tech-name">Redis</div>
+        <div class="tech-role">Memory & Sessions</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-icon">📄</div>
+        <div class="tech-name">Docling</div>
+        <div class="tech-role">Doc Processing</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-icon">🔬</div>
+        <div class="tech-name">Cross-Encoder</div>
+        <div class="tech-role">Reranking</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-icon">🔎</div>
+        <div class="tech-name">BM25</div>
+        <div class="tech-role">Keyword Search</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-icon">🔭</div>
+        <div class="tech-name">LangSmith</div>
+        <div class="tech-role">Tracing & Eval</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-icon">🐳</div>
+        <div class="tech-name">Docker</div>
+        <div class="tech-role">Containerization</div>
+      </div>
+      <div class="tech-item">
+        <div class="tech-icon">⚛️</div>
+        <div class="tech-name">React + Vite</div>
+        <div class="tech-role">Frontend</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Course Modules -->
+  <section class="index-section">
+    <h2 class="index-section-title">Course Modules</h2>
+
+    <a href="module1.html" class="module-card">
+      <div class="module-card-number">1</div>
+      <div class="module-card-content">
+        <div class="module-card-title">Foundations & Architecture</div>
+        <div class="module-card-desc">What this app does, end-to-end flow, Docker Compose setup, and how agentic RAG differs from traditional RAG. Includes 7 interview Q&As.</div>
+        <div class="module-card-tags">
+          <span class="tag tag-accent">Architecture</span>
+          <span class="tag tag-info">LangGraph</span>
+          <span class="tag tag-success">7 Q&As</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="module2.html" class="module-card">
+      <div class="module-card-number">2</div>
+      <div class="module-card-content">
+        <div class="module-card-title">The Multi-Agent System</div>
+        <div class="module-card-desc">Meet the 4 agents — Query, Retrieval, Tool, Synthesis. How they share state, how the orchestrator routes, and agent reasoning patterns. 7 interview Q&As.</div>
+        <div class="module-card-tags">
+          <span class="tag tag-accent">Agents</span>
+          <span class="tag tag-info">Orchestrator</span>
+          <span class="tag tag-success">7 Q&As</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="module3.html" class="module-card">
+      <div class="module-card-number">3</div>
+      <div class="module-card-content">
+        <div class="module-card-title">Retrieval Strategies</div>
+        <div class="module-card-desc">Hybrid search deep-dive: BM25, vector search, Reciprocal Rank Fusion, cross-encoder reranking, query rewriting, and MMR diversity. 8 interview Q&As.</div>
+        <div class="module-card-tags">
+          <span class="tag tag-accent">BM25</span>
+          <span class="tag tag-info">RRF</span>
+          <span class="tag tag-warning">Reranker</span>
+          <span class="tag tag-success">8 Q&As</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="module4.html" class="module-card">
+      <div class="module-card-number">4</div>
+      <div class="module-card-content">
+        <div class="module-card-title">Vector Stores & Indexing</div>
+        <div class="module-card-desc">ChromaDB internals, embedding fingerprinting, multi-tenancy, HNSW vs IVF-PQ, incremental indexing, and collection isolation. 5 interview Q&As.</div>
+        <div class="module-card-tags">
+          <span class="tag tag-accent">ChromaDB</span>
+          <span class="tag tag-info">Embeddings</span>
+          <span class="tag tag-success">5 Q&As</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="module5.html" class="module-card">
+      <div class="module-card-number">5</div>
+      <div class="module-card-content">
+        <div class="module-card-title">Memory & Prompt Engineering</div>
+        <div class="module-card-desc">Redis session buffer, auto-summarization, sliding window, circuit breaker. System prompts, citation enforcement, "lost in the middle", prompt injection defense. 12 interview Q&As.</div>
+        <div class="module-card-tags">
+          <span class="tag tag-accent">Memory</span>
+          <span class="tag tag-info">Prompts</span>
+          <span class="tag tag-warning">Safety</span>
+          <span class="tag tag-success">12 Q&As</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="module6.html" class="module-card">
+      <div class="module-card-number">6</div>
+      <div class="module-card-content">
+        <div class="module-card-title">Data Pipeline & Ingestion</div>
+        <div class="module-card-desc">Docling document processor, chunking strategies, content-hash IDs, metadata enrichment, multi-modal handling, deduplication. 5 interview Q&As.</div>
+        <div class="module-card-tags">
+          <span class="tag tag-accent">Docling</span>
+          <span class="tag tag-info">Chunking</span>
+          <span class="tag tag-success">5 Q&As</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="module7.html" class="module-card">
+      <div class="module-card-number">7</div>
+      <div class="module-card-content">
+        <div class="module-card-title">Production & Scalability</div>
+        <div class="module-card-desc">Latency management, caching, observability, auto-scaling, rate limits, graceful degradation, embedding rollouts. Evaluation metrics and RAGAS. 13 interview Q&As.</div>
+        <div class="module-card-tags">
+          <span class="tag tag-accent">Scale</span>
+          <span class="tag tag-info">Metrics</span>
+          <span class="tag tag-warning">Ops</span>
+          <span class="tag tag-success">13 Q&As</span>
+        </div>
+      </div>
+    </a>
+
+    <a href="module8.html" class="module-card">
+      <div class="module-card-number">8</div>
+      <div class="module-card-content">
+        <div class="module-card-title">Advanced Topics & System Design</div>
+        <div class="module-card-desc">CRAG, Self-RAG, knowledge graphs, speculative retrieval, RLHF, multi-language RAG, guardrails. Real-world system design scenarios. 15 interview Q&As.</div>
+        <div class="module-card-tags">
+          <span class="tag tag-accent">CRAG</span>
+          <span class="tag tag-info">KG</span>
+          <span class="tag tag-warning">Design</span>
+          <span class="tag tag-success">15 Q&As</span>
+        </div>
+      </div>
+    </a>
+  </section>
+
+  <!-- How to Use -->
+  <section class="index-section">
+    <h2 class="index-section-title">How to Use This Course</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <div class="step-title">Read the Architecture First</div>
+          <div class="step-text">Module 1 grounds everything. Understand what the app does before diving into how.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <div class="step-title">Study Code ↔ English Translations</div>
+          <div class="step-text">Every code snippet has a plain-English explanation side by side. Read the English first, then the code.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <div class="step-title">Try the Interview Questions</div>
+          <div class="step-text">Click each question to expand the answer. Try answering first, then check. Answers reference real code from this codebase.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <div class="step-title">Take the Quizzes</div>
+          <div class="step-text">Each module ends with application-based quizzes. They test understanding, not memorization.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <p>Agentic RAG Masterclass — Built from the <strong>rag-ai</strong> codebase</p>
+  <p style="margin-top: var(--space-xs);">65 Interview Questions · 8 Modules · Production-Grade Code</p>
+</footer>
+
+<script>
+// Scroll-triggered section animations
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0.1 });
+document.querySelectorAll('.section, .card, .module-card, .step').forEach(el => {
+  observer.observe(el);
+});
+
+// Nav scroll shadow
+window.addEventListener('scroll', () => {
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+}, { passive: true });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 4: Vector Stores & Indexing — Agentic RAG Masterclass</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="nav-brand">🤖 <span>Agentic RAG</span> Masterclass</div>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Home</a>
+    <a href="module1.html" class="nav-link">1</a>
+    <a href="module2.html" class="nav-link">2</a>
+    <a href="module3.html" class="nav-link">3</a>
+    <a href="module4.html" class="nav-link active">4</a>
+    <a href="module5.html" class="nav-link">5</a>
+    <a href="module6.html" class="nav-link">6</a>
+    <a href="module7.html" class="nav-link">7</a>
+    <a href="module8.html" class="nav-link">8</a>
+  </div>
+</nav>
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+<main>
+
+  <header class="module-header">
+    <div class="module-number">Module 4 of 8</div>
+    <h1 class="module-title">Vector Stores &amp; Indexing</h1>
+    <p class="module-subtitle">ChromaDB internals, embeddings, multi-tenancy, and the fingerprinting system that prevents silent failures.</p>
+  </header>
+
+  <!-- Section 1: What are Embeddings -->
+  <section class="section" id="s1">
+    <h2 class="section-title">🧬 What Are Embeddings?</h2>
+    <p>Imagine you could reduce every sentence to a <strong>GPS coordinate</strong>. Sentences with similar meaning would be at nearby coordinates. That's what embeddings do — they convert text into lists of numbers (vectors) where <strong>proximity = similarity</strong>.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">📏</div>
+        <div class="card-title">768 Dimensions</div>
+        <div class="card-text">Our embedding model (<code>nomic-embed-text-v1.5</code>) converts text into a list of 768 numbers. Each number captures a different aspect of meaning.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📐</div>
+        <div class="card-title">Cosine Similarity</div>
+        <div class="card-text">To find similar documents, we measure the angle between two vectors. Smaller angle = more similar. "Refund policy" and "return process" are close; "pizza recipe" is far away.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔄</div>
+        <div class="card-title">Normalized Vectors</div>
+        <div class="card-text">Our config: <code>embedding_normalize=True</code>. This scales all vectors to length 1, so cosine similarity simplifies to a dot product — faster math!</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: ChromaDB -->
+  <section class="section" id="s2">
+    <h2 class="section-title">🗄️ ChromaDB: Our Vector Database</h2>
+    <p>ChromaDB is like a <strong>filing cabinet with a built-in search engine</strong>. You put documents in, it creates embeddings, and you can search by meaning.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — chroma_store.py</div>
+<pre><span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">VectorStoreConfig</span>:
+    path: str    <span style="color: var(--code-comment)"># Local: "./data/chroma"</span>
+    url: str     <span style="color: var(--code-comment)"># Remote: "http://chroma:8000"</span>
+    collection_prefix: str
+
+<span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">VectorStoreBase</span>:
+    <span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">__init__</span>(self, config):
+        <span style="color: var(--code-keyword)">if</span> config.url:
+            self.client = HttpClient(
+                host=host, port=port)
+        <span style="color: var(--code-keyword)">else</span>:
+            self.client = PersistentClient(
+                path=config.path)
+
+        self.embed_fn = get_embedding_function()
+        self.fingerprint = \
+            get_embedding_fingerprint()</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>Where to find the database:</strong></div>
+        <div class="line">→ Local mode: stored in <code>./data/chroma</code> folder</div>
+        <div class="line">→ Remote mode: connect to a Docker container</div>
+        <div class="line">→ Optional prefix for collection names</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Setting up the connection:</strong></div>
+        <div class="line">→ If a URL is provided, connect over HTTP</div>
+        <div class="line">&nbsp;&nbsp;(for Docker or remote ChromaDB)</div>
+        <div class="line">→ Otherwise, use a local file-based database</div>
+        <div class="line">&nbsp;&nbsp;(simpler, no network needed)</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">→ Load the embedding model (converts text → vectors)</div>
+        <div class="line">→ Record the model's "fingerprint" (version ID)</div>
+        <div class="line"><em>Fingerprint = safety check against model changes</em></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: Multi-Tenancy -->
+  <section class="section" id="s3">
+    <h2 class="section-title">🏢 Multi-Tenancy: One Database, Many Clients</h2>
+    <p>Think of each client as having their own <strong>private locker</strong> in a shared gym. They can only access their own locker, plus a shared bulletin board (global collection).</p>
+
+    <div class="arch-diagram">
+      <div class="arch-row">
+        <div class="arch-box arch-box-agent">
+          <div class="arch-box-title">Client A Docs</div>
+          <div class="arch-box-desc">client_acme_docs_a1b2c3</div>
+        </div>
+        <div class="arch-box arch-box-docker">
+          <div class="arch-box-title">Client B Docs</div>
+          <div class="arch-box-desc">client_beta_docs_d4e5f6</div>
+        </div>
+        <div class="arch-box arch-box-data">
+          <div class="arch-box-title">Global Docs</div>
+          <div class="arch-box-desc">global_docs</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — chroma_store.py</div>
+<pre><span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">sanitize_collection_name</span>(name: str):
+    <span style="color: var(--code-comment)"># Rules: 3-63 chars, alphanum + _ + -</span>
+    <span style="color: var(--code-comment)"># Hash suffix prevents collisions</span>
+    <span style="color: var(--code-comment)"># "client-1" → "client_1_a1b2c3d4"</span>
+
+<span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">ChromaClientVectorStore</span>(VectorStoreBase):
+    <span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">__init__</span>(self, config, client_id,
+                 verify_fingerprint=True):
+        <span style="color: var(--code-comment)"># Each client → own ChromaDB collection</span>
+        name = sanitize_collection_name(
+            f<span style="color: var(--code-string)">"client_{client_id}_docs"</span>)
+        self.docs = self.client.get_or_create(
+            name=name,
+            embedding_function=self.embed_fn)</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>Making safe collection names:</strong></div>
+        <div class="line">→ ChromaDB has naming rules (3-63 chars)</div>
+        <div class="line">→ Add a hash suffix so "client-1" and "client_1"</div>
+        <div class="line">&nbsp;&nbsp;don't collide</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Each client gets their own storage locker:</strong></div>
+        <div class="line">→ Client "acme" → collection "client_acme_docs_a1b2"</div>
+        <div class="line">→ Optionally verify the embedding model hasn't changed</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">→ Get the collection (or create it if it's new)</div>
+        <div class="line">→ Attach the embedding model for future inserts</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><em>Physical separation > metadata filtering</em></div>
+        <div class="line"><em>A bug in filter logic can't leak cross-tenant data!</em></div>
+      </div>
+    </div>
+
+    <div class="callout callout-warning">
+      <div class="callout-icon">⚠️</div>
+      <div class="callout-content">
+        <div class="callout-title">Collection-per-Client vs. Metadata Filtering</div>
+        <div class="callout-text">Many systems use one big collection with a <code>client_id</code> metadata filter. That's dangerous — a bug in the <code>where</code> clause could leak data across tenants. Our approach uses <strong>physically separate collections</strong>, making cross-client data leakage structurally impossible.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: Embedding Fingerprinting -->
+  <section class="section" id="s4">
+    <h2 class="section-title">🔐 Embedding Fingerprinting: The Silent Failure Preventer</h2>
+    <p>Imagine you indexed 10,000 documents with Model A, then someone changed to Model B without re-indexing. Your search results would be <strong>garbage</strong> — but silently. No errors, just wrong answers.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — embeddings.py</div>
+<pre><span style="color: var(--code-decorator)">@dataclass</span>
+<span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">EmbeddingFingerprint</span>:
+    provider: str    <span style="color: var(--code-comment)"># "ollama"</span>
+    model: str       <span style="color: var(--code-comment)"># "nomic-embed-text"</span>
+    dimension: int   <span style="color: var(--code-comment)"># 768</span>
+    normalize: bool  <span style="color: var(--code-comment)"># True</span>
+    version: str     <span style="color: var(--code-comment)"># "1.0"</span>
+
+<span style="color: var(--code-comment)"># On ingestion: save fingerprint</span>
+chunk.metadata[<span style="color: var(--code-string)">"embedding_fingerprint"</span>] = \
+    <span style="color: var(--code-string)">"lmstudio:nomic-embed-text:768:true:1.0"</span>
+
+<span style="color: var(--code-comment)"># On startup: verify fingerprint</span>
+<span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">verify_embedding_fingerprint</span>(stored):
+    current = get_embedding_fingerprint()
+    <span style="color: var(--code-keyword)">if</span> current != stored:
+        <span style="color: var(--code-keyword)">raise</span> EmbeddingMismatchError()</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>A "passport" for the embedding model:</strong></div>
+        <div class="line">→ Which provider (ollama, lmstudio)?</div>
+        <div class="line">→ Which model name?</div>
+        <div class="line">→ How many dimensions (768)?</div>
+        <div class="line">→ Are vectors normalized?</div>
+        <div class="line">→ What version?</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>When we save a document:</strong></div>
+        <div class="line">→ Stamp the fingerprint on every chunk's metadata</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>When the server starts:</strong></div>
+        <div class="line">→ Compare current model's fingerprint with stored</div>
+        <div class="line">→ If they don't match → LOUD ERROR</div>
+        <div class="line">→ "Hey! Your model changed! Re-index or you'll get bad results!"</div>
+        <div class="line"><em>Prevents the worst kind of bug: silently wrong answers</em></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Index Types -->
+  <section class="section" id="s5">
+    <h2 class="section-title">📊 Index Types: HNSW vs IVF-PQ vs Brute Force</h2>
+
+    <table class="comparison-table">
+      <thead><tr><th>Index Type</th><th>How It Works</th><th>Speed</th><th>Memory</th><th>Best For</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>HNSW</strong> (ours)</td>
+          <td>Graph-based — builds a multi-layer navigation graph</td>
+          <td>⚡ Very fast queries</td>
+          <td>📈 High (keeps full vectors in memory)</td>
+          <td>&lt;1M vectors, high recall needed</td>
+        </tr>
+        <tr>
+          <td><strong>IVF-PQ</strong></td>
+          <td>Clusters + compression — groups vectors, then compresses each</td>
+          <td>⚡ Fast queries</td>
+          <td>📉 Low (~4x less than HNSW)</td>
+          <td>1M-100M vectors, memory-constrained</td>
+        </tr>
+        <tr>
+          <td><strong>Brute Force</strong></td>
+          <td>Checks every single vector — exhaustive scan</td>
+          <td>🐌 Slow (O(n))</td>
+          <td>📏 Moderate</td>
+          <td>&lt;100K vectors, perfect recall needed</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-info">
+      <div class="callout-icon">🔑</div>
+      <div class="callout-content">
+        <div class="callout-title">Our System Uses HNSW</div>
+        <div class="callout-text">ChromaDB uses HNSW by default. With our 768-dimension embeddings and typical collection sizes (&lt;1M vectors per client), HNSW handles <code>initial_fetch_k=30</code> candidate retrieval in milliseconds. The reranker compensates for any ANN recall loss.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interview Questions -->
+  <section class="section" id="interview">
+    <h2 class="section-title">🎤 Interview Questions: Vector Stores & Indexing</h2>
+
+    <div class="interview-qa" id="q16">
+      <div class="qa-question" onclick="toggleQA('q16')">
+        <span class="qa-badge">Q16</span>
+        <span class="qa-question-text">How do you choose between vector databases (Pinecone, Weaviate, Qdrant, Milvus) for production?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our system uses <strong>ChromaDB</strong>. The decision criteria:</p>
+        <table class="comparison-table">
+          <thead><tr><th>Criteria</th><th>ChromaDB (ours)</th><th>Pinecone</th><th>Weaviate</th><th>Qdrant</th></tr></thead>
+          <tbody>
+            <tr><td>Local/embedded</td><td>✅ In-process or Docker</td><td>❌ Cloud-only</td><td>✅ Self-hosted</td><td>✅ Self-hosted</td></tr>
+            <tr><td>Privacy</td><td>✅ All data local</td><td>❌ Vendor cloud</td><td>✅</td><td>✅</td></tr>
+            <tr><td>Setup</td><td>Minimal</td><td>API key + cloud</td><td>Docker Compose</td><td>Docker Compose</td></tr>
+            <tr><td>Scalability</td><td>Single-node (&lt;10M)</td><td>Managed, billions</td><td>Horizontal</td><td>Horizontal</td></tr>
+          </tbody>
+        </table>
+        <p>For our privacy-focused, per-client isolation use case, ChromaDB wins. For enterprise scale, we'd migrate via the <code>VectorStoreBase</code> abstract interface.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q17">
+      <div class="qa-question" onclick="toggleQA('q17')">
+        <span class="qa-badge">Q17</span>
+        <span class="qa-question-text">Explain HNSW, IVF-PQ, and brute-force ANN indexes.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>See the comparison table above. In our system, ChromaDB uses <strong>HNSW</strong> with 768-dim embeddings. This is appropriate for collections up to ~1M vectors. The reranker compensates for ANN recall loss — even if HNSW misses a relevant doc in initial retrieval, it won't matter if it's not in the top-30 candidates.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q18">
+      <div class="qa-question" onclick="toggleQA('q18')">
+        <span class="qa-badge">Q18</span>
+        <span class="qa-question-text">How do you handle incremental index updates without full re-indexing?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Incremental updates at multiple levels:</p>
+        <ol>
+          <li><strong>ChromaDB:</strong> <code>collection.upsert()</code> handles incremental HNSW updates. Content-hash IDs make upserts idempotent.</li>
+          <li><strong>BM25:</strong> <code>add_documents()</code> appends and rebuilds scoring; <code>delete()</code> removes by ID</li>
+          <li><strong>Hybrid Search:</strong> <code>add_documents()</code> updates both indices in one call</li>
+          <li><strong>Hot reload:</strong> Documents available immediately after upload — no restart needed</li>
+        </ol>
+        <p><strong>For modifications:</strong> Delete old chunks + add new chunks (content-hash ID change detection).</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q19">
+      <div class="qa-question" onclick="toggleQA('q19')">
+        <span class="qa-badge">Q19</span>
+        <span class="qa-question-text">Strategies for multi-tenancy with per-tenant retrieval isolation?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our system uses <strong>collection-per-client isolation</strong>:</p>
+        <ol>
+          <li><strong>Separate ChromaDB collections</strong> per client with sanitized names + hash suffix</li>
+          <li><strong>Separate BM25 indices</strong> via <code>get_bm25_index(client_id)</code></li>
+          <li><strong>Separate HybridSearch instances</strong> cached per client</li>
+          <li><strong>API-level enforcement</strong> via JWT auth + client_id validation</li>
+        </ol>
+        <p>This is <strong>stronger than metadata-filter-based isolation</strong> — physical separation means a bug can't leak data across tenants.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q20">
+      <div class="qa-question" onclick="toggleQA('q20')">
+        <span class="qa-badge">Q20</span>
+        <span class="qa-question-text">How do you version and roll back an embedding index when your model changes?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our <strong>embedding fingerprinting</strong> system:</p>
+        <ol>
+          <li><strong>On ingestion:</strong> Each chunk gets an <code>embedding_fingerprint</code> metadata field</li>
+          <li><strong>On startup:</strong> <code>verify_embedding_fingerprint()</code> compares stored vs. current</li>
+          <li><strong>On mismatch:</strong> <code>EmbeddingMismatchError</code> raised — loud failure, not silent degradation</li>
+        </ol>
+        <p><strong>Rollback strategy:</strong> Per-client collections enable one-at-a-time re-indexing. BM25 indices are model-independent (text-only) and survive model changes. <code>verify_fingerprint=False</code> escape hatch for migration.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quiz -->
+  <section class="section" id="quiz">
+    <div class="quiz">
+      <div class="quiz-title">🧪 Module 4 Quiz</div>
+
+      <div class="quiz-question" id="quiz1">
+        <div class="quiz-q-text">1. You change the embedding model from nomic-embed-text to a new model. What happens on the next server start?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Everything works fine — ChromaDB adapts automatically</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>EmbeddingMismatchError is raised — the system refuses to search with mismatched embeddings</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Search works but returns random results</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz1-exp">
+          ✅ The embedding fingerprint system catches this! On startup, <code>verify_embedding_fingerprint()</code> compares the stored fingerprint ("lmstudio:nomic-embed-text:768:true:1.0") with the current model's fingerprint. If they don't match, it raises <code>EmbeddingMismatchError</code> — a loud failure that tells you to re-index.
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz2">
+        <div class="quiz-q-text">2. Why does this system use separate ChromaDB collections per client instead of one big collection with metadata filtering?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>ChromaDB doesn't support metadata filtering</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>Separate collections are always faster than filtered queries</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>Physical separation makes cross-client data leakage structurally impossible — a filter bug can't expose other clients' data</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz2-exp">
+          ✅ Security through architecture, not just code! With metadata filtering, a bug in the <code>where</code> clause (or a forgotten filter) could return another client's documents. With separate collections, there's no way to accidentally query the wrong collection. Defense in depth.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="module-nav">
+    <a href="module3.html">← Module 3: Retrieval Strategies</a>
+    <a href="module5.html">Module 5: Memory & Prompt Engineering →</a>
+  </div>
+
+</main>
+
+<script>
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = ((h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100) + '%';
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+}, { passive: true });
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.section').forEach(s => obs.observe(s));
+function toggleQA(id) { document.getElementById(id).classList.toggle('open'); }
+function checkAnswer(el, correct, expId) {
+  const p = el.closest('.quiz-question');
+  if (p.querySelector('.correct, .incorrect')) return;
+  p.querySelectorAll('.quiz-option').forEach(o => { o.style.pointerEvents = 'none'; o.style.opacity = '0.6'; });
+  el.style.opacity = '1'; el.classList.add(correct ? 'correct' : 'incorrect');
+  document.getElementById(expId).classList.add('show');
+}
+</script>
+
+</body>
+</html>

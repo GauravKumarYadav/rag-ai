@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 1: Foundations & Architecture — Agentic RAG Masterclass</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <div class="nav-brand">🤖 <span>Agentic RAG</span> Masterclass</div>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Home</a>
+    <a href="module1.html" class="nav-link active">1</a>
+    <a href="module2.html" class="nav-link">2</a>
+    <a href="module3.html" class="nav-link">3</a>
+    <a href="module4.html" class="nav-link">4</a>
+    <a href="module5.html" class="nav-link">5</a>
+    <a href="module6.html" class="nav-link">6</a>
+    <a href="module7.html" class="nav-link">7</a>
+    <a href="module8.html" class="nav-link">8</a>
+  </div>
+</nav>
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+<main>
+
+  <!-- Module Header -->
+  <header class="module-header">
+    <div class="module-number">Module 1 of 8</div>
+    <h1 class="module-title">Foundations &amp; Architecture</h1>
+    <p class="module-subtitle">What this app does, how everything connects, and why agentic RAG changes the game.</p>
+  </header>
+
+  <!-- Section 1: What the App Does -->
+  <section class="section" id="s1">
+    <h2 class="section-title">🎯 What This App Actually Does</h2>
+    <p style="font-size: var(--text-lg); margin-bottom: var(--space-xl);">
+      Imagine you upload a PDF of your company's policies. Then you ask: <em>"What's our refund policy?"</em>
+      A normal chatbot guesses. <strong>This chatbot reads your actual document and answers from it</strong> — citing the exact page.
+    </p>
+
+    <div class="callout callout-aha">
+      <div class="callout-icon">💡</div>
+      <div class="callout-content">
+        <div class="callout-title">The Big Idea: RAG = Retrieval-Augmented Generation</div>
+        <div class="callout-text">Instead of relying on what the AI "memorized" during training, RAG <strong>retrieves</strong> relevant documents first, then <strong>generates</strong> an answer grounded in those documents. Think of it like giving the AI an open-book exam instead of a closed-book one.</div>
+      </div>
+    </div>
+
+    <p>But this isn't basic RAG. This is <strong>Agentic RAG</strong> — the AI doesn't just retrieve and answer. It <em>thinks about what to do</em>:</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">🤔</div>
+        <div class="card-title">"Is this a question or chitchat?"</div>
+        <div class="card-text">The Query Agent classifies intent first. Saying "Hello!" doesn't trigger a document search.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔧</div>
+        <div class="card-title">"Does this need a tool?"</div>
+        <div class="card-text">"What is 15% of 200?" goes to the calculator, not the document search.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔍</div>
+        <div class="card-title">"Which documents to search?"</div>
+        <div class="card-text">Searches your client-specific docs first, then global docs, combines and reranks.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">✍️</div>
+        <div class="card-title">"How should I answer?"</div>
+        <div class="card-text">The Synthesis Agent generates a response with source citations, formatting it in Markdown.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: Traditional vs Agentic RAG -->
+  <section class="section" id="s2">
+    <h2 class="section-title">⚡ Traditional RAG vs. Agentic RAG</h2>
+
+    <p>Think of traditional RAG like a <strong>vending machine</strong> — you push one button, get one result. Agentic RAG is like a <strong>personal assistant</strong> who thinks about what you need before acting.</p>
+
+    <table class="comparison-table">
+      <thead>
+        <tr><th>Aspect</th><th>Traditional RAG</th><th>Agentic RAG (Our System)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Flow</td>
+          <td>Query → Retrieve → Generate</td>
+          <td>Query → <em>Classify</em> → <em>Route</em> → Retrieve/Tool/Skip → Generate</td>
+        </tr>
+        <tr>
+          <td>Decision Making</td>
+          <td>None — always retrieves</td>
+          <td>LLM classifies intent, decides whether to retrieve, use tools, or chat</td>
+        </tr>
+        <tr>
+          <td>Query Optimization</td>
+          <td>Raw query → embedding</td>
+          <td>Query rewritten for better retrieval using conversation context</td>
+        </tr>
+        <tr>
+          <td>Search Method</td>
+          <td>Vector search only</td>
+          <td>BM25 + Vector → RRF Fusion → Cross-encoder Reranking</td>
+        </tr>
+        <tr>
+          <td>Memory</td>
+          <td>Usually none</td>
+          <td>Redis session buffer + auto-summarization</td>
+        </tr>
+        <tr>
+          <td>Multi-tenant</td>
+          <td>Usually single collection</td>
+          <td>Per-client collections + global collection</td>
+        </tr>
+        <tr>
+          <td>Tools</td>
+          <td>None</td>
+          <td>Calculator, datetime, extensible tool system</td>
+        </tr>
+        <tr>
+          <td>LLM Calls</td>
+          <td>1 call</td>
+          <td>2–3 calls (classify, optional rewrite, generate)</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Section 3: End-to-End Architecture -->
+  <section class="section" id="s3">
+    <h2 class="section-title">🏗️ End-to-End Architecture</h2>
+
+    <p>Everything runs inside <strong>Docker Compose</strong> — four containers talking to each other, plus an external LLM.</p>
+
+    <div class="arch-diagram">
+      <div class="arch-row">
+        <div class="arch-box arch-box-docker">
+          <div class="arch-box-title">🐳 Nginx</div>
+          <div class="arch-box-desc">Frontend hosting + Reverse proxy to API</div>
+        </div>
+      </div>
+      <div class="arch-connector">↕️</div>
+      <div class="arch-row">
+        <div class="arch-box arch-box-agent">
+          <div class="arch-box-title">⚡ Chat-API</div>
+          <div class="arch-box-desc">FastAPI + LangGraph Orchestrator + 4 Agents</div>
+        </div>
+      </div>
+      <div class="arch-connector">↕️</div>
+      <div class="arch-row">
+        <div class="arch-box arch-box-data">
+          <div class="arch-box-title">🔴 Redis</div>
+          <div class="arch-box-desc">Sessions, Memory, Auto-Summaries</div>
+        </div>
+        <div class="arch-box arch-box-data">
+          <div class="arch-box-title">🧬 ChromaDB</div>
+          <div class="arch-box-desc">Vector Store (Client + Global collections)</div>
+        </div>
+      </div>
+      <div class="arch-connector">↕️</div>
+      <div class="arch-row">
+        <div class="arch-box arch-box-external">
+          <div class="arch-box-title">🧠 LM Studio</div>
+          <div class="arch-box-desc">Local LLM (or Ollama/Groq/OpenAI)</div>
+        </div>
+        <div class="arch-box arch-box-external">
+          <div class="arch-box-title">🔭 LangSmith</div>
+          <div class="arch-box-desc">Tracing & Observability</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info">
+      <div class="callout-icon">🔑</div>
+      <div class="callout-content">
+        <div class="callout-title">Why Local LLM?</div>
+        <div class="callout-text">The default config uses LM Studio running locally. This means <strong>zero data leaves your machine</strong> — critical for privacy-sensitive document Q&A. But you can switch to Groq or OpenAI with a single config change.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: The Request Journey -->
+  <section class="section" id="s4">
+    <h2 class="section-title">🚀 A Request's Journey (End-to-End)</h2>
+
+    <p>Follow a single question — <em>"What is our refund policy?"</em> — through the entire system:</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <div class="step-title">User sends message via Frontend</div>
+          <div class="step-text">The React+Vite frontend sends the message through a WebSocket connection (or REST fallback) to FastAPI. JWT token authenticates the user.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <div class="step-title">Memory loaded from Redis</div>
+          <div class="step-text">The <code>SessionBuffer</code> fetches the conversation summary and recent messages from Redis. This gives the agents context about prior turns.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <div class="step-title">Query Agent classifies intent</div>
+          <div class="step-text">An LLM call with <code>temperature=0.1</code> classifies the message as <code>{"intent": "question", "needs_retrieval": true}</code>. The query is rewritten for better retrieval.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <div class="step-title">Orchestrator routes to Retrieval Agent</div>
+          <div class="step-text">The LangGraph's <code>_route_after_query()</code> sees <code>needs_retrieval=true</code> and routes to the Retrieval Agent.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">5</div>
+        <div class="step-content">
+          <div class="step-title">Hybrid search across two collections</div>
+          <div class="step-text">BM25 keyword search + vector semantic search run on both the client collection and global collection. Results are fused with RRF, then reranked by a cross-encoder.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">6</div>
+        <div class="step-content">
+          <div class="step-title">Synthesis Agent generates response</div>
+          <div class="step-text">Top 5 chunks (with source labels) are passed to the LLM. It generates a Markdown-formatted response with <code>[Source: filename]</code> citations.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">7</div>
+        <div class="step-content">
+          <div class="step-title">Memory updated</div>
+          <div class="step-text">The message + response are saved to Redis. If the conversation exceeds 4000 tokens, older messages are auto-summarized by the LLM.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">8</div>
+        <div class="step-content">
+          <div class="step-title">Response streamed to user</div>
+          <div class="step-text">Via WebSocket, the response streams in real-time. Via REST, it's returned as a JSON payload with the response + sources list.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Code Walkthrough - main.py -->
+  <section class="section" id="s5">
+    <h2 class="section-title">💻 Code Walkthrough: The Entry Point</h2>
+
+    <p>The entire backend starts from <code>backend/app/main.py</code>. Here's how it wires everything together:</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — main.py</div>
+<pre><span style="color: var(--code-decorator)">@asynccontextmanager</span>
+<span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">lifespan</span>(app: FastAPI):
+    start_pruning_scheduler()
+    buffer = get_session_buffer()
+    <span style="color: var(--code-keyword)">yield</span>
+    stop_pruning_scheduler()
+
+app = FastAPI(
+    title=<span style="color: var(--code-string)">"Agentic RAG Chatbot"</span>,
+    version=<span style="color: var(--code-string)">"2.0.0"</span>,
+    lifespan=lifespan,
+)
+
+app.include_router(chat.router)
+app.include_router(documents.router)
+app.include_router(websocket.router)</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>When the server starts up:</strong></div>
+        <div class="line">→ Start a background scheduler that prunes old memory</div>
+        <div class="line">→ Connect to Redis for session storage</div>
+        <div class="line">→ <strong>Then keep running until shutdown...</strong></div>
+        <div class="line">→ On shutdown, stop the memory pruner</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Create the API server</strong> named "Agentic RAG Chatbot"</div>
+        <div class="line">Version 2.0.0, with the startup/shutdown hooks above</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Wire up all the URL routes:</strong></div>
+        <div class="line">→ <code>/chat</code> for sending messages</div>
+        <div class="line">→ <code>/documents</code> for uploading files</div>
+        <div class="line">→ <code>/chat/ws/{client_id}</code> for real-time streaming</div>
+      </div>
+    </div>
+
+    <div class="callout callout-aha">
+      <div class="callout-icon">💡</div>
+      <div class="callout-content">
+        <div class="callout-title">Aha! The Lifespan Pattern</div>
+        <div class="callout-text">FastAPI's <code>lifespan</code> is like a <strong>setup/teardown bracket</strong>. Everything before <code>yield</code> runs at startup, everything after runs at shutdown. This is a universal pattern in modern Python — you'll see it in database connections, job schedulers, and resource managers.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 6: Config System -->
+  <section class="section" id="s6">
+    <h2 class="section-title">⚙️ The Configuration System</h2>
+
+    <p>Every setting in the system is defined in <code>backend/app/config.py</code> using <strong>Pydantic Settings</strong> — a type-safe configuration system that reads from environment variables.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — config.py</div>
+<pre><span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">LLMSettings</span>(BaseModel):
+    provider: str = <span style="color: var(--code-string)">"lmstudio"</span>
+    lmstudio: LMStudioSettings
+    ollama: OllamaSettings
+    groq: GroqSettings
+    openai: OpenAISettings
+    temperature: float = <span style="color: var(--code-number)">0.35</span>
+    max_tokens: int = <span style="color: var(--code-number)">4096</span>
+
+    <span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">get_active_provider</span>(self):
+        <span style="color: var(--code-keyword)">if</span> self.provider == <span style="color: var(--code-string)">"ollama"</span>:
+            <span style="color: var(--code-keyword)">return</span> self.ollama
+        <span style="color: var(--code-keyword)">if</span> self.provider == <span style="color: var(--code-string)">"groq"</span>:
+            <span style="color: var(--code-keyword)">return</span> self.groq
+        <span style="color: var(--code-keyword)">return</span> self.lmstudio</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>All LLM settings live here:</strong></div>
+        <div class="line">→ Default provider is "lmstudio" (local)</div>
+        <div class="line">→ But configs for Ollama, Groq, OpenAI are ready too</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">→ Default creativity: 0.35 (fairly factual)</div>
+        <div class="line">→ Max response length: 4096 tokens</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>"Give me the active provider's settings":</strong></div>
+        <div class="line">→ If config says "ollama", return Ollama settings</div>
+        <div class="line">→ If "groq", return Groq settings</div>
+        <div class="line">→ Otherwise, default to LM Studio</div>
+        <div class="line"><em>One function, many providers — strategy pattern!</em></div>
+      </div>
+    </div>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">🎯</div>
+        <div class="card-title">RAG Settings</div>
+        <div class="card-text"><code>chunk_size=1200</code>, <code>bm25_weight=0.4</code>, <code>vector_weight=0.6</code>, <code>reranker_enabled=true</code>, <code>initial_fetch_k=30</code>, <code>rerank_top_k=5</code></div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🧠</div>
+        <div class="card-title">Memory Settings</div>
+        <div class="card-text"><code>max_context_tokens=4000</code>, <code>sliding_window_size=10</code>, <code>summary_target_tokens=1000</code></div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔴</div>
+        <div class="card-title">Redis Settings</div>
+        <div class="card-text"><code>session_ttl=86400</code> (24 hours), <code>cache_ttl=3600</code> (1 hour)</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🤖</div>
+        <div class="card-title">Agent Settings</div>
+        <div class="card-text"><code>max_steps=10</code>, <code>langsmith_tracing=true</code>, <code>cost_tracking_enabled=true</code></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 7: Interview Questions -->
+  <section class="section" id="interview">
+    <h2 class="section-title">🎤 Interview Questions: Foundations & Architecture</h2>
+
+    <div class="interview-qa" id="q1">
+      <div class="qa-question" onclick="toggleQA('q1')">
+        <span class="qa-badge">Q1</span>
+        <span class="qa-question-text">How does an agentic RAG system differ from a traditional (single-shot) RAG pipeline, and when would you choose one over the other?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Traditional RAG:</strong> Query → Retrieve → Generate. One pass, no decision-making.</p>
+        <p><strong>Agentic RAG (our system):</strong> The LLM is wrapped inside an <em>agent loop</em>. In our project, the <code>Orchestrator</code> builds a LangGraph <code>StateGraph</code> with specialized nodes:</p>
+        <ol>
+          <li><strong>Query Agent</strong> — classifies intent, rewrites queries</li>
+          <li><strong>Retrieval Agent</strong> — searches client + global collections</li>
+          <li><strong>Tool Agent</strong> — executes calculator/datetime</li>
+          <li><strong>Synthesis Agent</strong> — generates grounded responses</li>
+        </ol>
+        <p>The graph uses <strong>conditional edges</strong> (<code>_route_after_query</code>) to decide at runtime whether to retrieve, call a tool, list documents, or go straight to synthesis.</p>
+        <p><strong>When to choose which:</strong></p>
+        <ul>
+          <li><strong>Single-shot RAG:</strong> Simple Q&A over a single knowledge base with predictable query types</li>
+          <li><strong>Agentic RAG:</strong> Heterogeneous queries (chitchat, tools, multi-collection retrieval, follow-ups) requiring dynamic routing and query rewriting</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q2">
+      <div class="qa-question" onclick="toggleQA('q2')">
+        <span class="qa-badge">Q2</span>
+        <span class="qa-question-text">Walk me through the end-to-end architecture of an agentic RAG system you have built.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our system's end-to-end flow:</p>
+<pre>User → Frontend (React+Vite) → Nginx → FastAPI (Chat-API)
+  ├── Memory: SessionBuffer (Redis) → conversation_summary + recent_messages
+  ├── Orchestrator.run() (LangGraph StateGraph)
+  │   ├── QueryAgent → classify intent, detect tools, rewrite query
+  │   ├── Route: chitchat → SynthesisAgent
+  │   ├── Route: tool → ToolAgent → SynthesisAgent
+  │   ├── Route: document_list → _document_list_node → END
+  │   └── Route: question → RetrievalAgent (BM25+Vector→RRF→Rerank) → SynthesisAgent
+  └── _post_turn() → update memory, trigger auto-summarization
+→ Response to user</pre>
+        <p><strong>Key technology choices:</strong></p>
+        <div class="qa-comparison">
+          <table class="comparison-table">
+            <thead><tr><th>Component</th><th>Technology</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>LLM</td><td>LM Studio / Ollama / Groq</td><td>Local-first, privacy; multi-provider flexibility</td></tr>
+              <tr><td>Vector Store</td><td>ChromaDB</td><td>Lightweight, embedded, local</td></tr>
+              <tr><td>Keyword Search</td><td>BM25 (rank_bm25)</td><td>Exact keyword matches that vector misses</td></tr>
+              <tr><td>Fusion</td><td>Reciprocal Rank Fusion</td><td>Combines BM25 + vector without score calibration</td></tr>
+              <tr><td>Reranker</td><td>cross-encoder/ms-marco-MiniLM-L-6-v2</td><td>More accurate than bi-encoders for final ranking</td></tr>
+              <tr><td>Memory</td><td>Redis</td><td>Fast session storage with TTL and auto-summarization</td></tr>
+              <tr><td>Orchestration</td><td>LangGraph (StateGraph)</td><td>Stateful DAG with conditional edges</td></tr>
+              <tr><td>Observability</td><td>LangSmith</td><td>Full tracing of every agent step</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q3">
+      <div class="qa-question" onclick="toggleQA('q3')">
+        <span class="qa-badge">Q3</span>
+        <span class="qa-question-text">What role does the "agent loop" (observe → think → act → reflect) play in improving retrieval quality?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>In our system, the agent loop manifests as the LangGraph state machine:</p>
+        <ol>
+          <li><strong>Observe:</strong> The <code>QueryAgent</code> receives the user message + <code>conversation_summary</code> + <code>recent_messages</code> from Redis</li>
+          <li><strong>Think:</strong> The <code>QueryAgent</code> classifies intent (chitchat, question, tool, etc.) and rewrites the query for better retrieval</li>
+          <li><strong>Act:</strong> The orchestrator's <code>_route_after_query()</code> conditionally routes to the right agent</li>
+          <li><strong>Reflect (implicit):</strong> The synthesis agent evaluates retrieved context — if no docs found, it admits the gap rather than hallucinating</li>
+        </ol>
+        <p><strong>This improves retrieval quality because:</strong></p>
+        <ul>
+          <li><strong>Query rewriting</strong> resolves references like "tell me more about that" into standalone queries</li>
+          <li><strong>Intent classification</strong> prevents unnecessary retrieval for chitchat (saves latency)</li>
+          <li><strong>Dynamic routing</strong> sends the right query type to the right agent</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q4">
+      <div class="qa-question" onclick="toggleQA('q4')">
+        <span class="qa-badge">Q4</span>
+        <span class="qa-question-text">How do you decide between a single-agent vs. multi-agent orchestration pattern?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our project uses a <strong>multi-agent pattern</strong> (4 specialized agents + orchestrator). The decision was driven by:</p>
+        <ol>
+          <li><strong>Separation of concerns:</strong> Each agent has a single responsibility. <code>QueryAgent</code> classifies. <code>RetrievalAgent</code> fetches. <code>SynthesisAgent</code> generates. Independently testable.</li>
+          <li><strong>Heterogeneous query types:</strong> 5 intents (chitchat, question, follow_up, tool, document_list). A single agent would need a monolithic prompt.</li>
+          <li><strong>Multi-collection search:</strong> The <code>RetrievalAgent</code> must search client + global collections, merge, deduplicate, and rerank — complex enough for its own agent.</li>
+          <li><strong>Cost control:</strong> <code>QueryAgent</code> uses <code>temperature=0.1, max_tokens=256</code> (cheap classification), while <code>SynthesisAgent</code> uses <code>temperature=0.35, max_tokens=4096</code> (expensive generation). Independent tuning.</li>
+        </ol>
+        <p><strong>When a single agent suffices:</strong> Simple, single-collection Q&A with one query type and no tool use.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q5">
+      <div class="qa-question" onclick="toggleQA('q5')">
+        <span class="qa-badge">Q5</span>
+        <span class="qa-question-text">Explain "tool-augmented retrieval" — how does giving an LLM access to retrieval as a callable tool change system design?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>In our system, retrieval is one of several <em>callable tools</em> the agent can choose from. The <code>QueryAgent._detect_tool()</code> inspects the message for tool patterns:</p>
+<pre>tool_name, tool_params = self._detect_tool(message)
+if tool_name:
+    intent = "tool"
+    needs_retrieval = False</pre>
+        <p>The orchestrator routes to <code>ToolAgent</code> instead of <code>RetrievalAgent</code>. The <code>ToolAgent</code> executes the tool (e.g., <code>SafeCalculator</code>) and passes the result to <code>SynthesisAgent</code>.</p>
+        <p><strong>How this changes design:</strong></p>
+        <ul>
+          <li>The LLM doesn't compute math itself (avoids hallucinated calculations)</li>
+          <li>Retrieval is <em>conditional</em>, not mandatory</li>
+          <li>The <code>AgentState</code> carries <code>tool_name</code>, <code>tool_params</code>, <code>tool_result</code> alongside <code>retrieved_chunks</code></li>
+          <li>The synthesis prompt incorporates tool results naturally</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q6">
+      <div class="qa-question" onclick="toggleQA('q6')">
+        <span class="qa-badge">Q6</span>
+        <span class="qa-question-text">How would you architect an agentic RAG system serving both structured (SQL) and unstructured (document) sources?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our architecture is already designed for this extensibility:</p>
+        <ol>
+          <li><strong>Add a SQL tool to ToolAgent:</strong> The <code>ToolAgent</code> already supports calculator/datetime. Adding <code>sql_query</code> follows the same pattern.</li>
+          <li><strong>Router in QueryAgent:</strong> The intent classifier already distinguishes <code>question</code>, <code>tool</code>, <code>chitchat</code>. Add a <code>structured_query</code> intent to route to a SQL agent.</li>
+          <li><strong>Shared AgentState:</strong> The <code>tool_name</code>, <code>tool_params</code>, <code>tool_result</code> fields are generic enough to carry SQL queries/results.</li>
+          <li><strong>Synthesis merges both:</strong> The <code>SynthesisAgent</code> already merges document context with tool context. SQL results flow through <code>tool_context</code>.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q7">
+      <div class="qa-question" onclick="toggleQA('q7')">
+        <span class="qa-badge">Q7</span>
+        <span class="qa-question-text">What are the trade-offs between plan-then-execute and ReAct-style agent patterns for RAG?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our system uses a <strong>plan-then-execute</strong> pattern (static DAG):</p>
+        <div class="qa-comparison">
+          <table class="comparison-table">
+            <thead><tr><th>Aspect</th><th>Plan-then-Execute (Ours)</th><th>ReAct (Reactive Loop)</th></tr></thead>
+            <tbody>
+              <tr><td>Latency</td><td>Lower — single planning step</td><td>Higher — multiple LLM calls per cycle</td></tr>
+              <tr><td>Cost</td><td>Lower — fewer LLM invocations</td><td>Higher — each iteration costs tokens</td></tr>
+              <tr><td>Retrieval Quality</td><td>May miss if initial retrieval is poor</td><td>Can self-correct with iterative retrieval</td></tr>
+              <tr><td>Complexity</td><td>Simpler DAG, easier to trace/debug</td><td>Complex loop, harder to observe</td></tr>
+              <tr><td>Predictability</td><td>Deterministic routing, bounded steps</td><td>May enter infinite loops without guardrails</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Our <code>max_steps = 10</code> provides a safety bound. This is forward-looking for when iterative retrieval is added.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quiz -->
+  <section class="section" id="quiz">
+    <div class="quiz">
+      <div class="quiz-title">🧪 Module 1 Quiz</div>
+
+      <div class="quiz-question" id="quiz1">
+        <div class="quiz-q-text">1. A user sends "Hello, how are you?" to the chatbot. What happens?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>The system searches documents for "hello" and returns results</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Query Agent classifies as "chitchat", skips retrieval, Synthesis Agent responds casually</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>The system returns an error because it's not a document question</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz1-exp">
+          ✅ The Query Agent's intent classifier recognizes greetings as "chitchat" and sets <code>needs_retrieval: false</code>. The orchestrator routes directly to the Synthesis Agent, which uses the <code>CHITCHAT_SYSTEM_PROMPT</code> to respond warmly. This saves latency by skipping unnecessary document searches.
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz2">
+        <div class="quiz-q-text">2. Why does this system use multiple specialized agents instead of one big agent?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>Multiple agents are always faster than a single agent</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>LangGraph requires at least 4 agents to work</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>Each agent can be independently tuned (temp, tokens, prompts) and tested — separation of concerns</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz2-exp">
+          ✅ Separation of concerns! The Query Agent uses temperature=0.1 for deterministic classification, while the Synthesis Agent uses temperature=0.35 for natural responses. Each agent has its own prompt, token budget, and can be tested independently. A monolithic agent would need one massive prompt covering all cases.
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz3">
+        <div class="quiz-q-text">3. If the Redis server goes down, what happens to the chatbot?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz3-exp')">
+            <div class="quiz-radio"></div>
+            <div>The entire chatbot crashes and returns 500 errors</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz3-exp')">
+            <div class="quiz-radio"></div>
+            <div>The circuit breaker activates, memory falls back to in-memory storage with LRU eviction</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz3-exp')">
+            <div class="quiz-radio"></div>
+            <div>The chatbot works but loses all conversation history permanently</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz3-exp">
+          ✅ The SessionBuffer has a <code>RedisCircuitBreaker</code> that detects failures (threshold: 5 failures). It switches to an in-memory fallback with LRU eviction and automatically tests Redis recovery every 30 seconds. This is the circuit breaker pattern — a production resilience essential you'll see in Module 7.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Module Navigation -->
+  <div class="module-nav">
+    <a href="index.html">← Back to Home</a>
+    <a href="module2.html">Module 2: The Multi-Agent System →</a>
+  </div>
+
+</main>
+
+<script>
+// Progress bar
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  const pct = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+  document.getElementById('progress').style.width = pct + '%';
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+}, { passive: true });
+
+// Scroll-triggered animations
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.section').forEach(s => obs.observe(s));
+
+// Q&A toggles
+function toggleQA(id) {
+  document.getElementById(id).classList.toggle('open');
+}
+
+// Quiz
+function checkAnswer(el, correct, expId) {
+  const parent = el.closest('.quiz-question');
+  if (parent.querySelector('.correct, .incorrect')) return;
+  parent.querySelectorAll('.quiz-option').forEach(o => {
+    o.style.pointerEvents = 'none';
+    o.style.opacity = '0.6';
+  });
+  el.style.opacity = '1';
+  el.classList.add(correct ? 'correct' : 'incorrect');
+  if (!correct) {
+    parent.querySelectorAll('.quiz-option').forEach(o => {
+      if (o.onclick && o.onclick.toString().includes('true')) o.classList.add('correct');
+    });
+  }
+  document.getElementById(expId).classList.add('show');
+}
+</script>
+
+</body>
+</html>

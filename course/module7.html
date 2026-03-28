@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 7: Production & Scalability — Agentic RAG Masterclass</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<nav class="nav" id="nav">
+  <div class="nav-brand">🤖 <span>Agentic RAG</span> Masterclass</div>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Home</a>
+    <a href="module1.html" class="nav-link">1</a>
+    <a href="module2.html" class="nav-link">2</a>
+    <a href="module3.html" class="nav-link">3</a>
+    <a href="module4.html" class="nav-link">4</a>
+    <a href="module5.html" class="nav-link">5</a>
+    <a href="module6.html" class="nav-link">6</a>
+    <a href="module7.html" class="nav-link active">7</a>
+    <a href="module8.html" class="nav-link">8</a>
+  </div>
+</nav>
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+<main>
+  <header class="module-header">
+    <div class="module-number">Module 7 of 8</div>
+    <h1 class="module-title">Production &amp; Scalability</h1>
+    <p class="module-subtitle">Evaluation metrics, caching, observability, auto-scaling, graceful degradation — making the system production-grade.</p>
+  </header>
+
+  <!-- Section 1: Evaluation Metrics -->
+  <section class="section" id="s1">
+    <h2 class="section-title">📊 Evaluation: Beyond "Does It Work?"</h2>
+    <p>A RAG system isn't just about correct answers — it's about <strong>cost, latency, faithfulness, and coverage</strong>. Think of it like grading a restaurant: taste (answer quality), speed (latency), price (cost), and hygiene (faithfulness).</p>
+
+    <div class="comparison-table">
+      <table>
+        <thead>
+          <tr><th>Metric</th><th>What It Measures</th><th>How We Track It</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Faithfulness</strong></td>
+            <td>Is the answer supported by retrieved context?</td>
+            <td>Citation enforcement in prompt + LangSmith trace review</td>
+          </tr>
+          <tr>
+            <td><strong>Context Precision</strong></td>
+            <td>Of retrieved chunks, what fraction is relevant?</td>
+            <td><code>HybridSearchResult</code> stats + reranker metadata</td>
+          </tr>
+          <tr>
+            <td><strong>Context Recall</strong></td>
+            <td>Of all relevant chunks, what fraction was retrieved?</td>
+            <td>Dual-source retrieval (BM25 + vector) improves recall</td>
+          </tr>
+          <tr>
+            <td><strong>Answer Relevancy</strong></td>
+            <td>Does the answer address the question?</td>
+            <td>Intent classification + query rewriting improve this</td>
+          </tr>
+          <tr>
+            <td><strong>Cost</strong></td>
+            <td>Tokens consumed per query</td>
+            <td><code>CostTracker</code> (AsyncCallbackHandler) on every LLM call</td>
+          </tr>
+          <tr>
+            <td><strong>Latency</strong></td>
+            <td>End-to-end response time</td>
+            <td><code>@traceable</code> decorators + <code>HybridSearch</code> timing</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Section 2: Observability -->
+  <section class="section" id="s2">
+    <h2 class="section-title">🔍 Observability: X-Ray Vision for Your Pipeline</h2>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — @traceable decorators</div>
+<pre><span style="color: var(--code-comment)"># Every node is traced in LangSmith</span>
+<span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"agent.query"</span>)
+<span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">_query_node</span>(self, state)
+
+<span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"agent.retrieval"</span>)
+<span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">_retrieval_node</span>(self, state)
+
+<span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"agent.tool"</span>)
+<span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">_tool_node</span>(self, state)
+
+<span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"agent.synthesis"</span>)
+<span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">_synthesis_node</span>(self, state)
+
+<span style="color: var(--code-comment)"># Sub-operations too:</span>
+<span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"query_agent.classify_intent"</span>)
+<span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"query_agent.rewrite_query"</span>)
+<span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"retrieval_agent.retrieve_with_global"</span>)
+<span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"synthesis_agent.generate_response"</span>)
+
+<span style="color: var(--code-comment)"># Cost tracking as a callback</span>
+self.llm = <span style="color: var(--code-class)">ChatOpenAI</span>(
+    ..., callbacks=[self.cost_tracker]
+)</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">What you see in LangSmith</div>
+        <div class="line"><strong>Every request produces a trace tree:</strong></div>
+        <div class="line">📊 <code>orchestrator.run</code> (root span)</div>
+        <div class="line">&nbsp;&nbsp;├─ <code>agent.query</code></div>
+        <div class="line">&nbsp;&nbsp;│&nbsp;&nbsp;├─ <code>classify_intent</code> — 0.3s, 180 tokens</div>
+        <div class="line">&nbsp;&nbsp;│&nbsp;&nbsp;└─ <code>rewrite_query</code> — 0.4s, 120 tokens</div>
+        <div class="line">&nbsp;&nbsp;├─ <code>agent.retrieval</code></div>
+        <div class="line">&nbsp;&nbsp;│&nbsp;&nbsp;└─ <code>retrieve_with_global</code> — 0.2s</div>
+        <div class="line">&nbsp;&nbsp;└─ <code>agent.synthesis</code></div>
+        <div class="line">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└─ <code>generate_response</code> — 1.5s, 2400 tokens</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Plus structured JSON logs:</strong></div>
+        <div class="line">→ Correlation ID tracking across requests</div>
+        <div class="line">→ File rotation: 10MB per file, 30 backups</div>
+        <div class="line">→ Ready for Loki/ELK ingestion</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: Caching -->
+  <section class="section" id="s3">
+    <h2 class="section-title">⚡ Caching: Every Millisecond Counts</h2>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <div class="step-title">Singleton Pattern — Load Expensive Models Once</div>
+          <div class="step-text"><code>@lru_cache(maxsize=1)</code> on <code>get_reranker()</code>, <code>get_embedding_function()</code>. CrossEncoder lazy-loaded on first use. Model loads from disk only once per process lifetime.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <div class="step-title">HybridSearch Instance Caching</div>
+          <div class="step-text"><code>_hybrid_search_instances: Dict[str, HybridSearch] = {}</code> — one instance per client, reused across requests. Includes the BM25 index + ChromaDB collection reference.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <div class="step-title">Redis Conversation Summaries</div>
+          <div class="step-text">Instead of re-summarizing the entire history on every turn, compressed summaries are stored in Redis (<code>summary_key_prefix = "summary:"</code>, TTL = 24 hours).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <div class="step-title">BM25 Index Persistence</div>
+          <div class="step-text">Saved to disk (<code>./data/bm25</code>) and loaded on startup. No re-indexing unless the corpus changes.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-aha">
+      <div class="callout-icon">💡</div>
+      <div class="callout-content">
+        <div class="callout-title">What's Not Yet Cached: Semantic Caching</div>
+        <div class="callout-text">A missing optimization: embed incoming queries and check similarity against recent cached queries. If a query is semantically similar (cosine > 0.95) to a recent one, return the cached response. This could eliminate ~30% of LLM calls for repeated/similar questions.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: Scaling -->
+  <section class="section" id="s4">
+    <h2 class="section-title">📈 Scaling: From One User to Thousands</h2>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">docker-compose.yml — Services</div>
+<pre><span style="color: var(--code-comment)"># Stateless API — scale horizontally</span>
+chat-api:
+  build: ./backend
+  depends_on: [redis, chromadb]
+
+<span style="color: var(--code-comment)"># Shared state — scale vertically</span>
+redis:
+  image: redis:7-alpine
+  volumes: [redis-data:/data]
+
+chromadb:
+  image: chromadb/chroma:latest
+  volumes: [chroma-data:/chroma/chroma]
+
+<span style="color: var(--code-comment)"># Reverse proxy + frontend</span>
+nginx:
+  image: nginx:alpine
+  ports: [<span style="color: var(--code-string)">"80:80"</span>]</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Scaling Strategy</div>
+        <div class="line"><strong>The API is stateless:</strong></div>
+        <div class="line">→ All state lives in Redis + ChromaDB</div>
+        <div class="line">→ Spin up 5 API replicas behind Nginx</div>
+        <div class="line">→ Each replica has its own reranker semaphore</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Budget controls prevent runaway costs:</strong></div>
+        <div class="line">→ <code>cost_tracking_enabled = True</code></div>
+        <div class="line">→ <code>max_tokens = 4096</code> caps generation</div>
+        <div class="line">→ <code>max_steps = 10</code> bounds agent loops</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Infrastructure as Code:</strong></div>
+        <div class="line">→ <code>infra/main.tf</code> — Terraform provisioning</div>
+        <div class="line">→ <code>deploy/deploy.sh</code> — production deployment</div>
+        <div class="line">→ <code>deploy/docker-compose.prod.yml</code></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Graceful Degradation -->
+  <section class="section" id="s5">
+    <h2 class="section-title">🛡️ Graceful Degradation: The Art of Failing Well</h2>
+    <p>In production, things <em>will</em> break. The question is: does your system crash, or does it degrade gracefully? Ours has fallbacks at every critical point:</p>
+
+    <div class="comparison-table">
+      <table>
+        <thead>
+          <tr><th>Component</th><th>Failure Mode</th><th>Fallback</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Redis</strong></td>
+            <td>Connection lost</td>
+            <td>Circuit breaker → in-memory LRU store with token budget</td>
+          </tr>
+          <tr>
+            <td><strong>Embedding Service</strong></td>
+            <td>Unavailable</td>
+            <td><code>NoOpEmbeddingFunction</code> returns zero vectors — avoids hard crash</td>
+          </tr>
+          <tr>
+            <td><strong>Cross-Encoder</strong></td>
+            <td>Model fails to load</td>
+            <td>Skip reranking, return bi-encoder order: <code>hits[:top_k]</code></td>
+          </tr>
+          <tr>
+            <td><strong>BM25 Index</strong></td>
+            <td>Corrupted/missing</td>
+            <td>Fall back to vector-only search</td>
+          </tr>
+          <tr>
+            <td><strong>LLM Call</strong></td>
+            <td>Timeout (120s)</td>
+            <td>Return error message: "I encountered an error processing your request."</td>
+          </tr>
+          <tr>
+            <td><strong>Any Agent</strong></td>
+            <td>Unhandled exception</td>
+            <td>Per-agent error boundary catches and returns graceful fallback</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Interview Questions -->
+  <section class="section" id="interview">
+    <h2 class="section-title">🎤 Interview Questions: Evaluation & Production</h2>
+
+    <div class="interview-qa" id="q28">
+      <div class="qa-question" onclick="toggleQA('q28')">
+        <span class="qa-badge">Q28</span>
+        <span class="qa-question-text">What metrics do you use to evaluate an agentic RAG system beyond simple answer accuracy?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Multiple dimensions:</p>
+        <ol>
+          <li><strong>Cost tracking:</strong> <code>CostTracker</code> records prompt/completion tokens per call, compares against OpenAI pricing baselines (GPT-4o-mini: $0.15/$0.60 per 1M tokens).</li>
+          <li><strong>Retrieval quality:</strong> <code>test_rag_quality.py</code> (18.8 KB) tests precision, client isolation, hybrid vs. vector-only quality.</li>
+          <li><strong>Latency:</strong> <code>HybridSearch.search_with_stats()</code> tracks duration + candidate counts.</li>
+          <li><strong>Faithfulness (implicit):</strong> Citation enforcement + structured <code>sources</code> field.</li>
+          <li><strong>LangSmith dashboards:</strong> Per-project latency, token usage, and error trends.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q29">
+      <div class="qa-question" onclick="toggleQA('q29')">
+        <span class="qa-badge">Q29</span>
+        <span class="qa-question-text">How do you measure and reduce hallucination rates?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Measurement:</strong> Citation enforcement (responses without <code>[Source:]</code> for factual claims = hallucination signal), RAG quality tests, LangSmith trace review.</p>
+        <p><strong>Reduction:</strong> Low synthesis temperature (0.35), explicit grounding instructions, only 6 chunks × 600 chars (focused context), cross-encoder reranking (high-quality context), client context separation.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q30">
+      <div class="qa-question" onclick="toggleQA('q30')">
+        <span class="qa-badge">Q30</span>
+        <span class="qa-question-text">Explain the RAGAS evaluation framework. Which metrics are most useful for agentic RAG?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>RAGAS provides four key metrics:</p>
+        <ul>
+          <li><strong>Faithfulness:</strong> Is the answer supported by context? → Critical for our multi-agent pipeline where hallucination can creep in.</li>
+          <li><strong>Answer Relevancy:</strong> Does it address the question? → Our query rewriting improves this.</li>
+          <li><strong>Context Precision:</strong> Are retrieved chunks relevant? → Our reranker directly optimizes this.</li>
+          <li><strong>Context Recall:</strong> Are all relevant chunks found? → Our hybrid BM25+vector search improves recall over vector-only.</li>
+        </ul>
+        <p>Our <code>test_rag_quality.py</code> implements custom versions tailored to our pipeline.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q31">
+      <div class="qa-question" onclick="toggleQA('q31')">
+        <span class="qa-badge">Q31</span>
+        <span class="qa-question-text">How do you build a regression test suite for an agentic RAG system?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our test structure:</p>
+        <ul>
+          <li><strong>Golden tests:</strong> <code>test_rag_quality.py</code> — known Q&A pairs against indexed docs.</li>
+          <li><strong>Client isolation:</strong> <code>test_client_isolation.py</code> — client A's docs never in client B's results.</li>
+          <li><strong>Smoke tests:</strong> <code>test_smoke.py</code> — full pipeline E2E.</li>
+          <li><strong>Live endpoints:</strong> <code>test_endpoints.py</code> (49.8 KB!) — every API endpoint exercised.</li>
+          <li><strong>Config tests:</strong> <code>test_config.py</code> — setting changes don't break init.</li>
+        </ul>
+        <p>CI runs <code>make test</code> on every commit. Embedding fingerprints catch silent model changes. LangSmith tracks metric trends.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q32">
+      <div class="qa-question" onclick="toggleQA('q32')">
+        <span class="qa-badge">Q32</span>
+        <span class="qa-question-text">What is "context precision" vs. "context recall"?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Precision:</strong> Of the 5 final chunks, how many were actually relevant? Tracked via reranker metadata (<code>original_score</code> vs <code>rerank_score</code>).</p>
+        <p><strong>Recall:</strong> Of all relevant chunks in the knowledge base, how many were retrieved? Our dual-source retrieval (client + global, 30 candidates each) + BM25+vector fusion maximizes recall.</p>
+        <p>The reranker metadata lets us analyze whether reranking improves precision (promoting relevant docs) or hurts recall (demoting relevant docs).</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q33">
+      <div class="qa-question" onclick="toggleQA('q33')">
+        <span class="qa-badge">Q33</span>
+        <span class="qa-question-text">How would you A/B test two different agent strategies in production?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our architecture supports A/B testing via:</p>
+        <ol>
+          <li><strong>Config-driven strategy:</strong> Toggle <code>bm25_enabled</code>, <code>reranker_enabled</code>, weight tuning.</li>
+          <li><strong>Multi-provider LLM:</strong> Strategy A with LM Studio, Strategy B with Groq.</li>
+          <li><strong>LangSmith project splitting:</strong> Route 50% to <code>"agentic-rag-v1"</code>, 50% to <code>"agentic-rag-v2"</code>, compare metrics.</li>
+          <li><strong>Cost comparison:</strong> <code>CostTracker</code> measures tokens per query under each approach.</li>
+        </ol>
+        <p>Implementation: add <code>strategy</code> field to <code>ChatRequest</code>, instantiate appropriate orchestrator variant, use statistical significance tests.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q39">
+      <div class="qa-question" onclick="toggleQA('q39')">
+        <span class="qa-badge">Q39</span>
+        <span class="qa-question-text">How do you manage latency in an agentic RAG system with multiple retrieval rounds?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Latency management strategies:</p>
+        <ol>
+          <li><strong>Single-pass DAG:</strong> No iterative loops — Query → Retrieval → Synthesis (3 nodes, 2 LLM calls + 1 retrieval).</li>
+          <li><strong>Lightweight classification:</strong> <code>max_tokens=256</code>, <code>temperature=0.1</code> for fast intent. Chitchat skips retrieval entirely.</li>
+          <li><strong>Semaphore-bounded reranking:</strong> <code>asyncio.Semaphore(max_concurrent=2)</code> prevents CPU saturation.</li>
+          <li><strong>Candidate limits:</strong> 30 candidates for reranking, not 100+. Top 5 final results.</li>
+          <li><strong>Context truncation:</strong> Max 6 chunks × 600 chars = ~3600 chars to synthesis.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q40">
+      <div class="qa-question" onclick="toggleQA('q40')">
+        <span class="qa-badge">Q40</span>
+        <span class="qa-question-text">What caching strategies do you use to reduce redundant retrievals and LLM calls?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Multi-level caching:</p>
+        <ol>
+          <li><strong>Redis:</strong> <code>cache_ttl = 3600</code> for general caching.</li>
+          <li><strong>Singletons:</strong> <code>@lru_cache(maxsize=1)</code> for reranker + embedding models.</li>
+          <li><strong>Conversation summaries:</strong> Stored in Redis (<code>session_ttl = 86400</code>), not re-computed per turn.</li>
+          <li><strong>BM25 persistence:</strong> Saved to <code>./data/bm25</code>, loaded on startup.</li>
+          <li><strong>Lazy loading:</strong> CrossEncoder model loaded on first use only.</li>
+        </ol>
+        <p><strong>Future:</strong> Semantic caching (embed queries, check similarity to cached queries before running retrieval).</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q41">
+      <div class="qa-question" onclick="toggleQA('q41')">
+        <span class="qa-badge">Q41</span>
+        <span class="qa-question-text">How do you implement observability and tracing for a multi-step agentic RAG pipeline?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Full-stack observability:</p>
+        <ol>
+          <li><strong>LangSmith <code>@traceable</code>:</strong> Every node + sub-operation traced with latency and token counts.</li>
+          <li><strong>Structured JSON logging:</strong> Correlation ID tracking, 10MB rotation, Loki/ELK-ready.</li>
+          <li><strong>Cost tracking:</strong> <code>CostTracker</code> (AsyncCallbackHandler) on every LLM call, logs tokens + estimated costs.</li>
+          <li><strong>Health endpoint:</strong> <code>/health</code> for monitoring systems.</li>
+          <li><strong>Retrieval stats:</strong> <code>HybridSearchResult</code> tracks BM25/vector/fused candidate counts + duration.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q42">
+      <div class="qa-question" onclick="toggleQA('q42')">
+        <span class="qa-badge">Q42</span>
+        <span class="qa-question-text">How would you auto-scale an agentic RAG service to handle bursty traffic?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Stateless API + shared state = horizontal scaling:</p>
+        <ol>
+          <li><strong>Stateless API:</strong> All state in Redis + ChromaDB. Multiple replicas behind Nginx.</li>
+          <li><strong>Redis as shared state:</strong> Sessions, summaries accessible from any replica.</li>
+          <li><strong>Remote ChromaDB:</strong> <code>url: Optional[str]</code> supports external vector store, scaling independently.</li>
+          <li><strong>Per-instance semaphores:</strong> Each replica manages its own CPU load.</li>
+          <li><strong>IaC:</strong> Terraform (<code>infra/main.tf</code>) for cloud provisioning.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q43">
+      <div class="qa-question" onclick="toggleQA('q43')">
+        <span class="qa-badge">Q43</span>
+        <span class="qa-question-text">How do you handle rate limits and token budget management?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Token budgets at every level:</p>
+        <ul>
+          <li><strong>Per-request:</strong> QueryAgent <code>max_tokens=256</code>, SynthesisAgent <code>max_tokens=4096</code>.</li>
+          <li><strong>Memory:</strong> Auto-summarization at 4000 tokens, compresses to ~1000.</li>
+          <li><strong>Context truncation:</strong> <code>context[:500]</code>, <code>summary[:300]</code>, chunks <code>content[:600]</code>.</li>
+          <li><strong>LLM timeout:</strong> <code>timeout=120.0</code> prevents hung requests.</li>
+          <li><strong>Reranker semaphore:</strong> Effective rate-limiting on the most CPU-intensive operation.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q44">
+      <div class="qa-question" onclick="toggleQA('q44')">
+        <span class="qa-badge">Q44</span>
+        <span class="qa-question-text">What is your strategy for graceful degradation?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Production-grade fallbacks at every layer:</p>
+        <ul>
+          <li><strong>Redis:</strong> Circuit breaker (CLOSED → OPEN → HALF_OPEN) → in-memory LRU fallback.</li>
+          <li><strong>Embeddings:</strong> <code>NoOpEmbeddingFunction</code> returns zero vectors.</li>
+          <li><strong>Reranker:</strong> Disabled → return bi-encoder order (<code>hits[:top_k]</code>).</li>
+          <li><strong>BM25:</strong> Missing → vector-only search.</li>
+          <li><strong>Orchestrator:</strong> Catch-all error boundary returns user-friendly error.</li>
+        </ul>
+        <p>Philosophy: <em>Degraded service is always better than no service.</em></p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q45">
+      <div class="qa-question" onclick="toggleQA('q45')">
+        <span class="qa-badge">Q45</span>
+        <span class="qa-question-text">How do you deploy embedding model updates without downtime?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Embedding fingerprinting system:</p>
+        <ol>
+          <li><strong>Write:</strong> Every chunk gets <code>embedding_fingerprint</code> metadata: <code>"lmstudio:nomic-embed-text:768:true:1.0"</code></li>
+          <li><strong>Read:</strong> <code>verify_embedding_fingerprint()</code> compares stored vs. current on startup.</li>
+          <li><strong>Mismatch:</strong> <code>EmbeddingMismatchError</code> raised — prevents silent mixed-embedding degradation.</li>
+          <li><strong>Per-client migration:</strong> Re-index one client at a time (create new collection → verify → swap → delete old).</li>
+          <li><strong>BM25 survives:</strong> BM25 uses raw text tokens, unaffected by embedding model changes.</li>
+          <li><strong>Escape hatch:</strong> <code>verify_fingerprint=False</code> for intentional migration scenarios.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quiz -->
+  <section class="section" id="quiz">
+    <div class="quiz">
+      <div class="quiz-title">🧪 Module 7 Quiz</div>
+
+      <div class="quiz-question" id="quiz1">
+        <div class="quiz-q-text">1. The embedding service goes down. What happens to search?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>The entire system crashes</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>NoOpEmbeddingFunction returns zero vectors; BM25 still works for keyword search; reranker falls back to original order</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Only BM25 search is available; vector search throws an error</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz1-exp">
+          ✅ The <code>NoOpEmbeddingFunction</code> returns zero vectors instead of crashing. BM25 continues working since it doesn't use embeddings. The system degrades gracefully — you get keyword-only results instead of nothing.
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz2">
+        <div class="quiz-q-text">2. You swap the embedding model from nomic-embed-text to multilingual-e5. What prevents silent quality degradation?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>Embedding fingerprinting detects the mismatch and raises EmbeddingMismatchError, forcing a re-index decision</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>ChromaDB automatically re-embeds all documents</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>Nothing — you need to manually check</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz2-exp">
+          ✅ The <code>EmbeddingFingerprint</code> system stores a fingerprint like <code>"lmstudio:nomic-embed-text:768:true:1.0"</code> with each chunk. On startup, <code>verify_embedding_fingerprint()</code> compares it against the current model config. A mismatch raises <code>EmbeddingMismatchError</code>, alerting you that old embeddings are incompatible with the new model and re-indexing is needed.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="module-nav">
+    <a href="module6.html">← Module 6: Data Pipeline</a>
+    <a href="module8.html">Module 8: Advanced Topics →</a>
+  </div>
+</main>
+
+<script>
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = ((h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100) + '%';
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+}, { passive: true });
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.section').forEach(s => obs.observe(s));
+function toggleQA(id) { document.getElementById(id).classList.toggle('open'); }
+function checkAnswer(el, correct, expId) {
+  const p = el.closest('.quiz-question');
+  if (p.querySelector('.correct, .incorrect')) return;
+  p.querySelectorAll('.quiz-option').forEach(o => { o.style.pointerEvents = 'none'; o.style.opacity = '0.6'; });
+  el.style.opacity = '1'; el.classList.add(correct ? 'correct' : 'incorrect');
+  document.getElementById(expId).classList.add('show');
+}
+</script>
+</body>
+</html>

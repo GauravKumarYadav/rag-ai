@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 8: Advanced Topics & System Design — Agentic RAG Masterclass</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<nav class="nav" id="nav">
+  <div class="nav-brand">🤖 <span>Agentic RAG</span> Masterclass</div>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Home</a>
+    <a href="module1.html" class="nav-link">1</a>
+    <a href="module2.html" class="nav-link">2</a>
+    <a href="module3.html" class="nav-link">3</a>
+    <a href="module4.html" class="nav-link">4</a>
+    <a href="module5.html" class="nav-link">5</a>
+    <a href="module6.html" class="nav-link">6</a>
+    <a href="module7.html" class="nav-link">7</a>
+    <a href="module8.html" class="nav-link active">8</a>
+  </div>
+</nav>
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+<main>
+  <header class="module-header">
+    <div class="module-number">Module 8 of 8</div>
+    <h1 class="module-title">Advanced Topics &amp; System Design</h1>
+    <p class="module-subtitle">CRAG, Self-RAG, knowledge graphs, guardrails, and real-world system design scenarios — the final boss level.</p>
+  </header>
+
+  <!-- Section 1: CRAG & Self-RAG -->
+  <section class="section" id="s1">
+    <h2 class="section-title">🔬 Next-Gen Paradigms: CRAG & Self-RAG</h2>
+
+    <div class="comparison-table">
+      <table>
+        <thead>
+          <tr><th>Aspect</th><th>CRAG (Corrective RAG)</th><th>Self-RAG</th><th>Our System</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Concept</strong></td>
+            <td>Verify answer against evidence <em>before</em> returning</td>
+            <td>Model emits special tokens (<code>[Retrieve]</code>, <code>[IsRel]</code>) during generation</td>
+            <td>Multi-agent pipeline with citation enforcement</td>
+          </tr>
+          <tr>
+            <td><strong>Retrieval trigger</strong></td>
+            <td>Always retrieves, then verifies</td>
+            <td>Model decides inline with <code>[Retrieve]</code> token</td>
+            <td>QueryAgent classifies intent → routes</td>
+          </tr>
+          <tr>
+            <td><strong>Relevance check</strong></td>
+            <td>Post-generation verification node</td>
+            <td><code>[IsRel]</code> token during generation</td>
+            <td>Cross-encoder reranker post-retrieval</td>
+          </tr>
+          <tr>
+            <td><strong>Model requirement</strong></td>
+            <td>Any LLM (extra call for verification)</td>
+            <td>Fine-tuned LLM with special tokens</td>
+            <td>Off-the-shelf (Qwen3-VL, Llama, GPT-4o-mini)</td>
+          </tr>
+          <tr>
+            <td><strong>Flexibility</strong></td>
+            <td>High — prompt changes only</td>
+            <td>Low — needs model retraining</td>
+            <td>High — prompt + config changes</td>
+          </tr>
+          <tr>
+            <td><strong>Latency</strong></td>
+            <td>Higher (+1 verification call)</td>
+            <td>Lower (single model, inline)</td>
+            <td>Medium (multi-agent, 2 LLM calls)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-aha">
+      <div class="callout-icon">💡</div>
+      <div class="callout-content">
+        <div class="callout-title">Adding CRAG to Our System</div>
+        <div class="callout-text">Because LangGraph uses a <code>StateGraph</code>, adding a verification node is trivial: <code>graph.add_node("verification", self._verify_node)</code>. The <code>AgentState</code> already carries both <code>response</code> and <code>retrieved_chunks</code>, so the verification node has everything it needs. Trade-off: +1 LLM call (~1-3s). Worth it for legal, medical, or financial domains.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: Knowledge Graphs -->
+  <section class="section" id="s2">
+    <h2 class="section-title">🕸️ Knowledge Graphs: Beyond Vector Search</h2>
+    <p>Vector search finds <strong>semantically similar</strong> text. Knowledge graphs find <strong>structurally connected</strong> facts. Think of it like the difference between finding similar-looking books (vector) versus following the web of citations between books (graph).</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — knowledge/ module</div>
+<pre><span style="color: var(--code-comment)"># graph_store.py — SQLite per client</span>
+<span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">EntityType</span>:
+    PERSON, ORGANIZATION, DOCUMENT,
+    DATE, AMOUNT, PRODUCT,
+    LOCATION, OTHER
+
+<span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">RelationType</span>:
+    AUTHORED, REFERENCES, WORKS_FOR,
+    DATED, OWNS, MENTIONS,
+    RELATED_TO, SIGNED, PAID, RECEIVED
+
+<span style="color: var(--code-comment)"># entity_extractor.py — LLM-based NER</span>
+<span style="color: var(--code-comment)"># Extracts entities from chunks</span>
+<span style="color: var(--code-comment)"># Links to source chunks via entity_ids</span>
+
+<span style="color: var(--code-comment)"># graph_query.py — traversal</span>
+kg_expansion_depth: int = <span style="color: var(--code-number)">2</span>
+<span style="color: var(--code-comment)"># 2-hop traversal for related entities</span>
+
+<span style="color: var(--code-comment)"># Enable with:</span>
+<span style="color: var(--code-comment)"># RAG__KNOWLEDGE_GRAPH_ENABLED=true</span></pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">What the KG adds</div>
+        <div class="line"><strong>Entity types — the "nouns":</strong></div>
+        <div class="line">👤 People, 🏢 Organizations, 📄 Documents</div>
+        <div class="line">📅 Dates, 💰 Amounts, 📦 Products, 📍 Locations</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>Relationship types — the "verbs":</strong></div>
+        <div class="line">✍️ Authored, 📖 References, 🏢 Works For</div>
+        <div class="line">📅 Dated, 💰 Paid, 📬 Received</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>How it augments retrieval:</strong></div>
+        <div class="line">Query: "Who signed the NDA with Acme Corp?"</div>
+        <div class="line">→ Vector search: finds NDA document chunks</div>
+        <div class="line">→ KG traversal: PERSON —SIGNED→ DOCUMENT —MENTIONS→ ORG(Acme)</div>
+        <div class="line">→ Combined: precise answer with entity relationships</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🔧 SQLite now, clear path to Neo4j later</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: Guardrails -->
+  <section class="section" id="s3">
+    <h2 class="section-title">🛡️ Guardrails & Safety Layers</h2>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <div class="step-title">Input Safety</div>
+          <div class="step-text"><code>SafeCalculator</code> uses shunting-yard algorithm (never <code>eval()</code>). Rejects <code>import</code>, <code>exec</code>, <code>__</code>, <code>lambda</code>, <code>;</code>. Intent validation only accepts 5 valid intents. Multi-strategy JSON parsing with regex fallbacks.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <div class="step-title">Data Access Safety</div>
+          <div class="step-text">JWT authentication on all endpoints. Per-client collection isolation (physical separation, not filter-based). Client ID validation on document operations. Even if injection manipulates the query, retrieval is scoped to the authenticated client.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <div class="step-title">Output Safety</div>
+          <div class="step-text">Citation enforcement grounds claims. <code>max_tokens=4096</code> prevents unbounded generation. Synthesis prompt: "Be concise but complete" — no encouragement to speculate.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <div class="step-title">Operational Safety</div>
+          <div class="step-text">Circuit breaker prevents cascade failures. LLM timeout = 120s. Per-agent error boundaries. Reranker semaphore caps CPU. Structured JSON logging with correlation IDs for audit.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: System Design Scenarios -->
+  <section class="section" id="s4">
+    <h2 class="section-title">🏗️ System Design Scenarios</h2>
+    <p>These scenarios test your ability to adapt the architecture to real-world constraints. Each one is grounded in decisions from this codebase.</p>
+  </section>
+
+  <!-- Interview Questions -->
+  <section class="section" id="interview">
+    <h2 class="section-title">🎤 Interview Questions: Advanced & System Design</h2>
+
+    <div class="interview-qa" id="q51">
+      <div class="qa-question" onclick="toggleQA('q51')">
+        <span class="qa-badge">Q51</span>
+        <span class="qa-question-text">How would you implement a "corrective RAG" (CRAG) pattern?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Add a verification node in LangGraph after synthesis:</p>
+        <ol>
+          <li>Takes <code>response</code> + <code>retrieved_chunks</code> from <code>AgentState</code>.</li>
+          <li>Prompts LLM: "Does this response accurately reflect the retrieved context? Flag unsupported claims."</li>
+          <li>If claims are unsupported: remove them, add disclaimer, or re-retrieve with refined query.</li>
+          <li>LangGraph's <code>StateGraph</code> makes this trivial — one <code>add_node()</code> + one <code>add_conditional_edges()</code> call.</li>
+        </ol>
+        <p><strong>Trade-off:</strong> +1 LLM call (~1-3s latency). Worth it for high-stakes domains.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q52">
+      <div class="qa-question" onclick="toggleQA('q52')">
+        <span class="qa-badge">Q52</span>
+        <span class="qa-question-text">Explain the Self-RAG paradigm.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Self-RAG fine-tunes a model with special tokens (<code>[Retrieve]</code>, <code>[IsRel]</code>, <code>[IsSup]</code>, <code>[IsUse]</code>) that the model emits during generation to signal retrieval needs and passage quality.</p>
+        <p><strong>vs. Our system:</strong> We use prompt-based approach with off-the-shelf LLMs. More flexible (no retraining), supports multiple providers (LM Studio, Ollama, Groq), fully inspectable via LangSmith. Self-RAG has lower latency (single model, inline decisions) but needs model retraining for changes.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q53">
+      <div class="qa-question" onclick="toggleQA('q53')">
+        <span class="qa-badge">Q53</span>
+        <span class="qa-question-text">How do you build a graph-augmented RAG system?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our system already has a knowledge graph module:</p>
+        <ul>
+          <li><strong>graph_store.py:</strong> SQLite per-client, stores entities + relationships.</li>
+          <li><strong>entity_extractor.py:</strong> LLM-based NER extracts PERSON, ORG, DATE, AMOUNT, etc.</li>
+          <li><strong>graph_query.py:</strong> 2-hop traversal (<code>kg_expansion_depth=2</code>).</li>
+          <li><strong>Integration:</strong> Chunk metadata includes <code>detected_entities</code>, <code>entity_ids</code>, <code>semantic_type</code>.</li>
+          <li><strong>Enable:</strong> <code>RAG__KNOWLEDGE_GRAPH_ENABLED=true</code></li>
+        </ul>
+        <p>Designed for scale: SQLite now, clear path to Neo4j (entity/relationship model is graph-native).</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q54">
+      <div class="qa-question" onclick="toggleQA('q54')">
+        <span class="qa-badge">Q54</span>
+        <span class="qa-question-text">What is Agentic Retrieval with Planning (ARP)?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>ARP creates an explicit retrieval plan before executing searches (what info, which sources, what order, stopping criteria).</p>
+        <p><strong>Our system:</strong> 1-step planning (classify + route). The QueryAgent does lightweight planning, the orchestrator executes via conditional edges. Multi-step planning would be warranted for complex analytical queries requiring data from multiple documents. LangGraph edges make this extensible.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q55">
+      <div class="qa-question" onclick="toggleQA('q55')">
+        <span class="qa-badge">Q55</span>
+        <span class="qa-question-text">How would you integrate RLHF to improve retrieval decisions?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Two areas for RLHF:</p>
+        <ol>
+          <li><strong>Query rewriting:</strong> Collect (original, rewritten, quality_score) triples from LangSmith traces. Fine-tune to maximize retrieval quality.</li>
+          <li><strong>Intent classification:</strong> Log misclassifications, use feedback to update few-shot examples or fine-tune the classifier.</li>
+        </ol>
+        <p><strong>Practical path:</strong> LangSmith feedback API → collect user ratings → export as training data → fine-tune → swap model (multi-provider support makes this seamless).</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q56">
+      <div class="qa-question" onclick="toggleQA('q56')">
+        <span class="qa-badge">Q56</span>
+        <span class="qa-question-text">Describe a collaborative multi-agent RAG system (retriever, critic, synthesizer).</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Our system is already collaborative multi-agent:</strong></p>
+        <ul>
+          <li><strong>Router/Planner:</strong> QueryAgent — intent + query rewriting</li>
+          <li><strong>Retriever:</strong> RetrievalAgent — hybrid search + reranking</li>
+          <li><strong>Tool Executor:</strong> ToolAgent — calculator, datetime</li>
+          <li><strong>Synthesizer:</strong> SynthesisAgent — response + citations</li>
+          <li><strong>Coordinator:</strong> Orchestrator — LangGraph workflow</li>
+        </ul>
+        <p><strong>Adding a critic:</strong> ~20 lines of code — <code>graph.add_node("critic", ...)</code> + conditional edges. The critic evaluates retrieval quality and can route back for refined retrieval.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q57">
+      <div class="qa-question" onclick="toggleQA('q57')">
+        <span class="qa-badge">Q57</span>
+        <span class="qa-question-text">How do you approach guardrails and safety layers in agentic RAG?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Four-layer defense:</p>
+        <ol>
+          <li><strong>Input:</strong> SafeCalculator (shunting-yard, no eval), intent validation (5 valid intents), regex JSON parsing.</li>
+          <li><strong>Data access:</strong> JWT auth, per-client physical collection isolation, client ID validation.</li>
+          <li><strong>Output:</strong> Citation enforcement, max_tokens cap, "be concise" instruction.</li>
+          <li><strong>Operational:</strong> Circuit breaker, timeouts, error boundaries, semaphore, structured audit logging.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q58">
+      <div class="qa-question" onclick="toggleQA('q58')">
+        <span class="qa-badge">Q58</span>
+        <span class="qa-question-text">What is the role of embedding model fine-tuning in agentic RAG?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Fine-tuning learns domain-specific semantic relationships. Our system supports it via:</p>
+        <ul>
+          <li><strong>Configurable model:</strong> <code>RAG__EMBEDDING_MODEL=my-fine-tuned-model</code></li>
+          <li><strong>Fingerprinting:</strong> Detects model changes, flags re-indexing needs.</li>
+          <li><strong>Abstract interface:</strong> <code>VectorStoreBase</code> decouples embedding from storage.</li>
+          <li><strong>Multiple providers:</strong> LMStudio, Ollama, Groq, dedicated microservice.</li>
+        </ul>
+        <p><strong>When to fine-tune:</strong> Highly specialized vocabulary, domain-specific relationships, when retrieval precision is critical. Our general-purpose nomic-embed-text works well for diverse corpora.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q59">
+      <div class="qa-question" onclick="toggleQA('q59')">
+        <span class="qa-badge">Q59</span>
+        <span class="qa-question-text">How would you implement speculative retrieval (pre-fetching)?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>After each turn, analyze conversation summary to predict likely next queries. Pre-fetch results into Redis cache (<code>cache_ttl=300</code>). Check prefetch cache before hitting vector store.</p>
+        <p><strong>Our Redis infrastructure supports this.</strong> Trade-off: consumes resources on predictions that may be wrong. Best for high-traffic systems where cache hit rate justifies overhead.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q60">
+      <div class="qa-question" onclick="toggleQA('q60')">
+        <span class="qa-badge">Q60</span>
+        <span class="qa-question-text">How do you balance parametric knowledge with retrieved knowledge?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Retrieved = priority:</strong> "Answer based on provided context when available."</p>
+        <p><strong>Parametric = fallback:</strong> "Respond based on general knowledge but clarify it's not from documents."</p>
+        <p><strong>Decision boundary:</strong> QueryAgent intent classification — <code>chitchat</code> → parametric only (CHITCHAT_SYSTEM_PROMPT), <code>question/follow_up</code> → retrieval-first (SYSTEM_PROMPT + context).</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q61">
+      <div class="qa-question" onclick="toggleQA('q61')">
+        <span class="qa-badge">Q61</span>
+        <span class="qa-question-text">Design an agentic RAG system for a legal firm with 10 million case documents and strict citation requirements.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Adapting our architecture:</p>
+        <ol>
+          <li><strong>Vector store:</strong> Replace ChromaDB with Qdrant/Weaviate for 10M+ docs. Our <code>VectorStoreBase</code> makes this a drop-in swap. Use IVF-PQ indexing.</li>
+          <li><strong>Multi-tenant:</strong> Per-client collections already built — maps to per-firm/per-case isolation.</li>
+          <li><strong>Citations:</strong> Already implemented. Enhance with <code>paragraph_index</code> and exact quote extraction.</li>
+          <li><strong>Chunking:</strong> Increase to ~2000 chars for legal context. Enable <code>respect_headings</code> for clause alignment.</li>
+          <li><strong>Knowledge graph:</strong> Enable for entity extraction — parties, judges, case citations, dates, amounts.</li>
+          <li><strong>Hybrid search:</strong> Critical — statute numbers (BM25) + conceptual similarity (vector).</li>
+          <li><strong>Audit:</strong> LangSmith tracing + structured JSON logging for compliance.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q62">
+      <div class="qa-question" onclick="toggleQA('q62')">
+        <span class="qa-badge">Q62</span>
+        <span class="qa-question-text">A user reports the agent is confidently returning outdated information. Diagnosis and fix.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Diagnosis:</strong></p>
+        <ol>
+          <li><strong>LangSmith trace:</strong> Find the query → check retrieved chunks metadata (source_filename, uploaded_at).</li>
+          <li><strong>Document currency:</strong> List docs via <code>/documents</code> API, check upload dates.</li>
+          <li><strong>BM25 freshness:</strong> Check if outdated docs were removed from ChromaDB but BM25 index wasn't updated.</li>
+          <li><strong>Embedding fingerprint:</strong> Stale embeddings from old model?</li>
+        </ol>
+        <p><strong>Fix:</strong> Delete outdated docs (both indices), upload updated versions (content-hash dedup), add timestamp-based recency filtering, rebuild BM25 if corrupted.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q63">
+      <div class="qa-question" onclick="toggleQA('q63')">
+        <span class="qa-badge">Q63</span>
+        <span class="qa-question-text">P95 latency spiked from 3s to 12s after deployment. Debugging process.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p><strong>Step 1 — Identify the slow node</strong> via LangSmith traces (per-node latency).</p>
+        <p><strong>Step 2 — Common suspects:</strong></p>
+        <ul>
+          <li>LLM provider slowdown → check LM Studio/Groq response times</li>
+          <li>Reranker overload → check semaphore contention</li>
+          <li>ChromaDB index growth → HNSW degrades at scale</li>
+          <li>BM25 corruption → check file size at <code>./data/bm25</code></li>
+          <li>Redis latency → check circuit breaker state, memory</li>
+          <li>Embedding model change → <code>EmbeddingMismatchError</code> in logs?</li>
+        </ul>
+        <p><strong>Quick mitigations:</strong> Reduce <code>initial_fetch_k</code> (30→15), increase reranker concurrency, disable BM25 to isolate, reduce LLM timeout.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q64">
+      <div class="qa-question" onclick="toggleQA('q64')">
+        <span class="qa-badge">Q64</span>
+        <span class="qa-question-text">Design an agentic RAG system supporting 50+ languages.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Adaptations needed:</p>
+        <ol>
+          <li><strong>Multilingual embeddings:</strong> <code>RAG__EMBEDDING_MODEL=multilingual-e5-large</code>. Fingerprinting detects the change.</li>
+          <li><strong>Language-aware chunking:</strong> Token-based for CJK (no whitespace). RTL handling for Arabic/Hebrew.</li>
+          <li><strong>Multilingual BM25:</strong> Per-language stopword lists. Language-aware tokenizer for CJK.</li>
+          <li><strong>Language detection:</strong> Add to QueryAgent before rewriting. Route to language-specific prompts.</li>
+          <li><strong>Cross-lingual retrieval:</strong> Multilingual embeddings map all languages to shared space. User asks in French, docs in English → works.</li>
+          <li><strong>Per-language monitoring:</strong> Track retrieval quality per language in LangSmith.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q65">
+      <div class="qa-question" onclick="toggleQA('q65')">
+        <span class="qa-badge">Q65</span>
+        <span class="qa-question-text">Integrating real-time web search as a fallback without sacrificing groundedness.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Design:</p>
+        <ol>
+          <li><strong>Add web search tool:</strong> Extend <code>QueryAgent._detect_tool()</code> and <code>ToolAgent</code>.</li>
+          <li><strong>Conditional trigger:</strong> Only when retrieval returns zero results or all rerank scores below threshold.</li>
+          <li><strong>Source labeling:</strong> Web results tagged <code>{"collection_type": "web", "source": url}</code>.</li>
+          <li><strong>Confidence hierarchy:</strong> client docs > global docs > web results.</li>
+          <li><strong>User transparency:</strong> "Based on your documents: ..." vs "From web search (not in your knowledge base): ..."</li>
+          <li><strong>Safety:</strong> Domain whitelist, rate limiting, Redis caching, mandatory attribution.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quiz -->
+  <section class="section" id="quiz">
+    <div class="quiz">
+      <div class="quiz-title">🧪 Module 8 Quiz — Final Boss</div>
+
+      <div class="quiz-question" id="quiz1">
+        <div class="quiz-q-text">1. You want to add a "fact-check" step to the pipeline. What's the minimal change?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Rewrite the entire orchestrator from scratch</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Add one node and one conditional edge to the LangGraph StateGraph — AgentState already has response + retrieved_chunks</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>Fine-tune a new model with verification tokens</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz1-exp">
+          ✅ LangGraph's <code>StateGraph</code> is designed for exactly this. <code>graph.add_node("verify", self._verify_node)</code> + <code>graph.add_conditional_edges("verify", ...)</code>. The shared <code>AgentState</code> already carries the response and retrieved chunks — zero data plumbing needed. This is the CRAG pattern.
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz2">
+        <div class="quiz-q-text">2. A legal firm needs citations that include page number AND section heading. Does our system support this?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>Yes — ChunkMetadata already includes page_number and section_heading, both populated by Docling during ingestion</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>No — we only store the source filename</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>Only for PDF files, not for other formats</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz2-exp">
+          ✅ The <code>ChunkMetadata</code> dataclass includes <code>page_number: Optional[int]</code> and <code>section_heading: Optional[str]</code>, both populated during Docling processing. The structured <code>sources</code> list in the API response includes these fields, enabling pinpoint citations like "[Source: contract.pdf, Page 7, Section: Indemnification]".
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz3">
+        <div class="quiz-q-text">3. Web search returns a result for a question where your knowledge base has no relevant documents. How should the system present it?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz3-exp')">
+            <div class="quiz-radio"></div>
+            <div>Present it the same way as knowledge base results</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz3-exp')">
+            <div class="quiz-radio"></div>
+            <div>Refuse to answer since it's not from the knowledge base</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz3-exp')">
+            <div class="quiz-radio"></div>
+            <div>Clearly label it: "From web search (not in your knowledge base): ..." with the source URL, maintaining the confidence hierarchy</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz3-exp">
+          ✅ Groundedness requires transparency about provenance. Web results use <code>{"collection_type": "web", "source": url}</code> metadata, and the synthesis prompt distinguishes "Based on your documents" vs "From web search". The confidence hierarchy (client > global > web) ensures knowledge base results always take priority when available.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Completion -->
+  <section class="section" id="complete">
+    <div style="text-align:center; padding: var(--space-xl) 0;">
+      <div style="font-size: 4rem; margin-bottom: var(--space-md);">🎓</div>
+      <h2 class="section-title">Course Complete!</h2>
+      <p style="font-size: 1.2rem; color: var(--text-secondary); max-width: 600px; margin: 0 auto var(--space-lg);">You've mastered 8 modules covering the complete architecture of an Agentic RAG system — from foundations to production to cutting-edge research. You've worked through 65 interview-ready Q&As and 20+ interactive quizzes.</p>
+      <a href="index.html" style="display:inline-block;padding:var(--space-sm) var(--space-lg);background:var(--accent);color:white;border-radius:var(--radius-md);text-decoration:none;font-weight:600;">← Back to Course Home</a>
+    </div>
+  </section>
+
+  <div class="module-nav">
+    <a href="module7.html">← Module 7: Production & Scale</a>
+    <a href="index.html">🏠 Course Home</a>
+  </div>
+</main>
+
+<script>
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = ((h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100) + '%';
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+}, { passive: true });
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.section').forEach(s => obs.observe(s));
+function toggleQA(id) { document.getElementById(id).classList.toggle('open'); }
+function checkAnswer(el, correct, expId) {
+  const p = el.closest('.quiz-question');
+  if (p.querySelector('.correct, .incorrect')) return;
+  p.querySelectorAll('.quiz-option').forEach(o => { o.style.pointerEvents = 'none'; o.style.opacity = '0.6'; });
+  el.style.opacity = '1'; el.classList.add(correct ? 'correct' : 'incorrect');
+  document.getElementById(expId).classList.add('show');
+}
+</script>
+</body>
+</html>

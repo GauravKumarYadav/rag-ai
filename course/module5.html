@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module 5: Memory & Prompt Engineering — Agentic RAG Masterclass</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<nav class="nav" id="nav">
+  <div class="nav-brand">🤖 <span>Agentic RAG</span> Masterclass</div>
+  <div class="nav-links">
+    <a href="index.html" class="nav-link">Home</a>
+    <a href="module1.html" class="nav-link">1</a>
+    <a href="module2.html" class="nav-link">2</a>
+    <a href="module3.html" class="nav-link">3</a>
+    <a href="module4.html" class="nav-link">4</a>
+    <a href="module5.html" class="nav-link active">5</a>
+    <a href="module6.html" class="nav-link">6</a>
+    <a href="module7.html" class="nav-link">7</a>
+    <a href="module8.html" class="nav-link">8</a>
+  </div>
+</nav>
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+<main>
+  <header class="module-header">
+    <div class="module-number">Module 5 of 8</div>
+    <h1 class="module-title">Memory &amp; Prompt Engineering</h1>
+    <p class="module-subtitle">How the system remembers conversations, auto-summarizes, and crafts prompts that prevent hallucination.</p>
+  </header>
+
+  <!-- Section 1: Memory System -->
+  <section class="section" id="s1">
+    <h2 class="section-title">🧠 The Memory System</h2>
+    <p>Imagine you're having a long phone call. After 30 minutes, you can't remember every word — but you remember the <strong>key points</strong>. That's what auto-summarization does: compresses old messages into a summary while keeping recent ones intact.</p>
+
+    <div class="flow-diagram">
+      <div class="flow-node flow-node-primary">New Message</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-secondary">Add to Redis Buffer</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node flow-node-warning">Tokens &gt; 4000?</div>
+      <div class="flow-arrow">→</div>
+      <div style="display:flex;flex-direction:column;gap:var(--space-sm);">
+        <div class="flow-node flow-node-tertiary">Yes: Summarize older msgs via LLM</div>
+        <div class="flow-node flow-node-muted">No: Continue as-is</div>
+      </div>
+    </div>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — summarizer.py</div>
+<pre><span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">ConversationSummarizer</span>:
+    max_context = <span style="color: var(--code-number)">4000</span>   <span style="color: var(--code-comment)"># tokens</span>
+    target = <span style="color: var(--code-number)">1000</span>         <span style="color: var(--code-comment)"># summary target</span>
+    window = <span style="color: var(--code-number)">10</span>           <span style="color: var(--code-comment)"># recent msgs kept</span>
+
+    <span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">needs_summarization</span>(self, summary, msgs):
+        total = self._estimate_tokens(summary)
+        total += sum(self._estimate_tokens(m)
+                     <span style="color: var(--code-keyword)">for</span> m <span style="color: var(--code-keyword)">in</span> msgs)
+        <span style="color: var(--code-keyword)">return</span> total > self.max_context
+
+    <span style="color: var(--code-decorator)">@traceable</span>(name=<span style="color: var(--code-string)">"summarize"</span>)
+    <span style="color: var(--code-keyword)">async def</span> <span style="color: var(--code-function)">summarize</span>(self, msgs, existing):
+        prompt = SUMMARY_PROMPT.format(
+            existing=existing,
+            messages=format_msgs(msgs))
+        result = <span style="color: var(--code-keyword)">await</span> self.llm.ainvoke(prompt)
+        <span style="color: var(--code-keyword)">return</span> result.content</pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>The conversation memory manager:</strong></div>
+        <div class="line">→ Trigger summarization at 4000 tokens</div>
+        <div class="line">→ Compress summary to ~1000 tokens</div>
+        <div class="line">→ Always keep the 10 most recent messages</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>"Do we need to summarize?"</strong></div>
+        <div class="line">→ Count tokens in existing summary</div>
+        <div class="line">→ Add tokens in all recent messages</div>
+        <div class="line">→ If total &gt; 4000 → yes, summarize!</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>The summarization itself:</strong></div>
+        <div class="line">→ Traced in LangSmith for observability</div>
+        <div class="line">→ Takes the old messages + any existing summary</div>
+        <div class="line">→ Asks the LLM to produce a concise summary</div>
+        <div class="line">→ Preserves: key facts, decisions, current topic</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 2: Circuit Breaker -->
+  <section class="section" id="s2">
+    <h2 class="section-title">🔌 The Circuit Breaker: When Redis Goes Down</h2>
+    <p>Think of a <strong>household circuit breaker</strong>. When too much electricity flows (Redis errors), it trips and redirects power (to in-memory storage). It periodically tests if the issue is fixed.</p>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — session_buffer.py</div>
+<pre><span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">RedisCircuitBreaker</span>:
+    <span style="color: var(--code-comment)"># States:</span>
+    <span style="color: var(--code-comment)"># CLOSED → normal, using Redis</span>
+    <span style="color: var(--code-comment)"># OPEN → Redis failing, use memory</span>
+    <span style="color: var(--code-comment)"># HALF_OPEN → testing recovery</span>
+
+    failure_threshold = <span style="color: var(--code-number)">5</span>
+    recovery_timeout = <span style="color: var(--code-number)">30.0</span>  <span style="color: var(--code-comment)"># seconds</span>
+    half_open_max = <span style="color: var(--code-number)">3</span>
+
+<span style="color: var(--code-keyword)">class</span> <span style="color: var(--code-class)">MemoryFallbackStore</span>:
+    <span style="color: var(--code-comment)"># In-memory LRU fallback</span>
+    max_sessions: int
+    max_messages_per_session: int
+    max_total_tokens: int
+
+    <span style="color: var(--code-keyword)">def</span> <span style="color: var(--code-function)">add_message</span>(self, session_id, msg):
+        <span style="color: var(--code-comment)"># LRU eviction when at capacity</span>
+        <span style="color: var(--code-comment)"># Trims oldest msgs if tokens exceeded</span></pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Plain English</div>
+        <div class="line"><strong>Three states, like a traffic light:</strong></div>
+        <div class="line">🟢 <strong>CLOSED:</strong> Everything fine, using Redis</div>
+        <div class="line">🔴 <strong>OPEN:</strong> Redis is down! Using in-memory backup</div>
+        <div class="line">🟡 <strong>HALF-OPEN:</strong> Cautiously testing if Redis recovered</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">After <strong>5 failures</strong> → circuit opens (stop trying Redis)</div>
+        <div class="line">Wait <strong>30 seconds</strong> → try Redis again (half-open)</div>
+        <div class="line">If <strong>3 successes</strong> → close circuit (Redis is back!)</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><strong>The backup store (when Redis is down):</strong></div>
+        <div class="line">→ Stores sessions in Python dictionaries</div>
+        <div class="line">→ LRU eviction: oldest unused sessions dropped first</div>
+        <div class="line">→ Token budget: trims oldest messages if too many</div>
+        <div class="line"><em>Degraded service > no service</em></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: System Prompts -->
+  <section class="section" id="s3">
+    <h2 class="section-title">✍️ Prompt Engineering: The Anti-Hallucination Prompt</h2>
+
+    <div class="code-translation">
+      <div class="code-side">
+        <div class="translation-label">Python — synthesis_agent.py</div>
+<pre>SYSTEM_PROMPT = <span style="color: var(--code-string)">"""You are a helpful AI
+assistant with access to a knowledge base.
+{client_context}
+
+## Response Guidelines:
+1. Answer based on the provided context
+   when available
+2. Cite sources using [Source: filename]
+   format
+3. If the context doesn't contain enough
+   information, say so clearly
+4. Be concise but complete
+5. If tool results are provided,
+   incorporate them naturally
+
+When no relevant context is found,
+respond based on your general knowledge
+but clarify that it's not from the
+documents."""</span></pre>
+      </div>
+      <div class="english-side">
+        <div class="translation-label">Anti-Hallucination Techniques</div>
+        <div class="line">🎯 <strong>Rule 1: Context first</strong></div>
+        <div class="line">→ "Answer based on provided context" — not imagination</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">📝 <strong>Rule 2: Mandatory citation</strong></div>
+        <div class="line">→ Forces LLM to attribute claims. Unsupported claims become visible.</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🤷 <strong>Rule 3: Admit uncertainty</strong></div>
+        <div class="line">→ "Say so clearly" — better to say "I don't know" than to fabricate</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">📏 <strong>Rule 4: Concise</strong></div>
+        <div class="line">→ Less text = fewer chances to hallucinate</div>
+        <div class="line">&nbsp;</div>
+        <div class="line">🏷️ <strong>Knowledge source labeling</strong></div>
+        <div class="line">→ Distinguishes document-based vs general knowledge</div>
+        <div class="line">→ Users know the provenance of each claim</div>
+      </div>
+    </div>
+
+    <div class="callout callout-aha">
+      <div class="callout-icon">💡</div>
+      <div class="callout-content">
+        <div class="callout-title">Aha! The "Lost in the Middle" Problem</div>
+        <div class="callout-text">LLMs tend to focus on the <strong>beginning</strong> and <strong>end</strong> of their context window, ignoring the middle. Our system mitigates this by: (1) only passing 6 chunks (short context), (2) truncating each to 600 chars, (3) putting the most relevant chunk first (rerank-ordered), and (4) putting the user's question at the END as a recency anchor.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: Citation Enforcement -->
+  <section class="section" id="s4">
+    <h2 class="section-title">📎 Citation Enforcement: How Sources Flow</h2>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <div class="step-title">Retrieval Agent builds source labels</div>
+          <div class="step-text">Each chunk gets <code>[Source: filename]</code> prepended in the context: <code>"[Source: policy.pdf]\nOur refund policy states..."</code></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <div class="step-title">Synthesis prompt shows the format</div>
+          <div class="step-text">The system prompt says "Cite sources using [Source: filename] format" — the LLM sees both the instruction AND the labels in context.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <div class="step-title">Structured sources returned to API</div>
+          <div class="step-text">The <code>sources</code> list in response includes: <code>id</code>, <code>content_preview</code>, <code>score</code>, <code>source</code>, <code>page</code>, <code>section</code> — for programmatic verification.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interview Questions -->
+  <section class="section" id="interview">
+    <h2 class="section-title">🎤 Interview Questions: Memory, Prompts & Safety</h2>
+
+    <div class="interview-qa" id="q34">
+      <div class="qa-question" onclick="toggleQA('q34')">
+        <span class="qa-badge">Q34</span>
+        <span class="qa-question-text">How do you structure the system prompt for a RAG agent to minimize hallucination?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our anti-hallucination techniques in the system prompt:</p>
+        <ol>
+          <li><strong>Grounding first:</strong> "Answer based on provided context" — context before parametric knowledge</li>
+          <li><strong>Mandatory citation:</strong> <code>[Source: filename]</code> format forces attribution</li>
+          <li><strong>Explicit uncertainty:</strong> "Say so clearly" if context is insufficient</li>
+          <li><strong>Knowledge labeling:</strong> Distinguishes document-based vs general knowledge</li>
+          <li><strong>Client context injection:</strong> <code>{client_context}</code> prevents cross-client confusion</li>
+        </ol>
+        <p>Natural tone preserved by: not over-constraining format, allowing Markdown, and having a separate <code>CHITCHAT_SYSTEM_PROMPT</code> for casual conversation.</p>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q35">
+      <div class="qa-question" onclick="toggleQA('q35')">
+        <span class="qa-badge">Q35</span>
+        <span class="qa-question-text">What techniques enforce citation and attribution in agent-generated answers?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Multiple layers of citation enforcement:</p>
+        <ol>
+          <li><strong>System prompt instruction:</strong> "Cite sources using [Source: filename]"</li>
+          <li><strong>Source labels in context:</strong> <code>_build_context()</code> prepends <code>[Source: name]</code> to each chunk — same format as requested citations</li>
+          <li><strong>Structured sources API response:</strong> <code>_build_sources()</code> returns <code>id</code>, <code>content_preview</code>, <code>score</code>, <code>source</code>, <code>page</code>, <code>section</code></li>
+          <li><strong>Rich metadata:</strong> <code>ChunkMetadata</code> includes <code>page_number</code> and <code>section_heading</code> for pinpoint citations</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q36">
+      <div class="qa-question" onclick="toggleQA('q36')">
+        <span class="qa-badge">Q36</span>
+        <span class="qa-question-text">How do you handle the "lost in the middle" problem?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>LLMs focus on content at the beginning and end of context, ignoring the middle. Our mitigations:</p>
+        <ol>
+          <li><strong>Short context:</strong> Only 6 chunks (not 20+) — no "dead zone"</li>
+          <li><strong>Truncation:</strong> Each chunk capped at 600 chars</li>
+          <li><strong>Relevance-ordered:</strong> Most relevant chunk first (rerank score order)</li>
+          <li><strong>Prompt layout:</strong> Conversation → Documents → Tools → <strong>Question at END</strong> (recency anchor)</li>
+          <li><strong>Chunk dividers:</strong> <code>---</code> separators make boundaries visible to LLM</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q38">
+      <div class="qa-question" onclick="toggleQA('q38')">
+        <span class="qa-badge">Q38</span>
+        <span class="qa-question-text">How do you guard against prompt injection attacks?</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Multiple defense layers:</p>
+        <ol>
+          <li><strong>Tool safety:</strong> <code>SafeCalculator</code> uses shunting-yard (never <code>eval()</code>), rejects <code>import</code>, <code>exec</code>, <code>__</code></li>
+          <li><strong>Multi-strategy JSON parsing:</strong> Intent classifier doesn't <code>eval()</code> LLM output — uses regex fallbacks with valid intent validation</li>
+          <li><strong>Client isolation:</strong> Even if injection manipulates the query, retrieval is scoped to authenticated client's collections</li>
+          <li><strong>JWT authentication:</strong> All endpoints require valid tokens</li>
+          <li><strong>Input truncation:</strong> <code>context[:500]</code>, <code>summary[:300]</code> prevent context stuffing</li>
+          <li><strong>Separation of concerns:</strong> User message is data (<code>HumanMessage</code>), not system instructions</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="interview-qa" id="q37">
+      <div class="qa-question" onclick="toggleQA('q37')">
+        <span class="qa-badge">Q37</span>
+        <span class="qa-question-text">Describe your approach to dynamic few-shot example selection.</span>
+        <span class="qa-toggle">▼</span>
+      </div>
+      <div class="qa-answer">
+        <p>Our system uses <strong>static few-shot examples</strong> in intent classification:</p>
+<pre>"Hello!" → {"intent": "chitchat", "needs_retrieval": false}
+"What is the refund policy?" → {"intent": "question", "needs_retrieval": true}
+"What documents do I have?" → {"intent": "document_list", "needs_retrieval": false}</pre>
+        <p><strong>Why static works:</strong> Intent classification has 5 bounded categories. Examples cover boundary cases.</p>
+        <p><strong>For dynamic selection:</strong> Maintain a vector index of (query, correct_intent) pairs. Retrieve top-3 similar examples for each new query. The existing embedding infrastructure could serve as the store.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quiz -->
+  <section class="section" id="quiz">
+    <div class="quiz">
+      <div class="quiz-title">🧪 Module 5 Quiz</div>
+
+      <div class="quiz-question" id="quiz1">
+        <div class="quiz-q-text">1. A conversation has 50 messages (5000 tokens). What happens when message 51 arrives?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>The oldest message is deleted</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>The LLM summarizes older messages into ~1000 tokens, keeping the 10 most recent messages intact</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz1-exp')">
+            <div class="quiz-radio"></div>
+            <div>The conversation is reset and a new session starts</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz1-exp">
+          ✅ When tokens exceed <code>max_context_tokens=4000</code>, the <code>ConversationSummarizer</code> kicks in. It takes the older messages (before the sliding window of 10), feeds them to the LLM with the summarization prompt, and produces a compressed summary (~1000 tokens). The 10 most recent messages stay intact. Summary is stored in Redis.
+        </div>
+      </div>
+
+      <div class="quiz-question" id="quiz2">
+        <div class="quiz-q-text">2. Why does the system prompt put the user's question LAST in the context?</div>
+        <div class="quiz-options">
+          <div class="quiz-option" onclick="checkAnswer(this, true, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>The "lost in the middle" problem — LLMs attend most to the beginning and end, so the question acts as a "recency anchor"</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>It's just a convention with no functional benefit</div>
+          </div>
+          <div class="quiz-option" onclick="checkAnswer(this, false, 'quiz2-exp')">
+            <div class="quiz-radio"></div>
+            <div>The LLM requires the question to be the last input</div>
+          </div>
+        </div>
+        <div class="quiz-explanation" id="quiz2-exp">
+          ✅ Research shows LLMs have a U-shaped attention curve — they focus most on the beginning and end of the input. By placing the question at the end, it sits in the high-attention zone, re-focusing the model on what it needs to answer. Combined with most-relevant chunks at the beginning, both attention peaks contain important information.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="module-nav">
+    <a href="module4.html">← Module 4: Vector Stores</a>
+    <a href="module6.html">Module 6: Data Pipeline →</a>
+  </div>
+</main>
+
+<script>
+window.addEventListener('scroll', () => {
+  const h = document.documentElement;
+  document.getElementById('progress').style.width = ((h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100) + '%';
+  document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 10);
+}, { passive: true });
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.08 });
+document.querySelectorAll('.section').forEach(s => obs.observe(s));
+function toggleQA(id) { document.getElementById(id).classList.toggle('open'); }
+function checkAnswer(el, correct, expId) {
+  const p = el.closest('.quiz-question');
+  if (p.querySelector('.correct, .incorrect')) return;
+  p.querySelectorAll('.quiz-option').forEach(o => { o.style.pointerEvents = 'none'; o.style.opacity = '0.6'; });
+  el.style.opacity = '1'; el.classList.add(correct ? 'correct' : 'incorrect');
+  document.getElementById(expId).classList.add('show');
+}
+</script>
+</body>
+</html>
